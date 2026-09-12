@@ -11,22 +11,25 @@ and a cross-user isolation test; it shows an honest setup state until configured
 - **Build:** `npm run build` ✅ (14 routes, static)
 - **Typecheck:** `tsc --noEmit` ✅
 - **Lint:** `next lint` ✅ (no warnings/errors)
-- **Tests:** `vitest run` ✅ **96 passing** (see the reliability-sprint evidence table below)
+- **Tests:** `vitest run` ✅ **111 passing** (see the reliability-sprint evidence table below)
 
 ## Architecture
 
 - `src/lib/domain/` — pure, framework-agnostic: `money` (integer cents), `finance`
   (surplus/net worth/coverage/utilization/double-count), `plan/{rules,engine}` (versioned
-  deterministic engine, v`2026.09.1`), `formation`, `sources` (verification/expiry gate),
+  deterministic engine, v`2026.09.2`), `formation`, `sources` (verification/expiry gate),
   `types`.
-- `src/lib/store/` — validated pure `mutations` + a React `provider` (demo persistence).
+- `src/lib/store/` — validated pure `mutations`, `sessionGuard` (generation + write
+  serialization), and a React `provider` with an explicit session state machine.
+- `src/lib/analytics/pilotEvents.ts` — derived pilot milestones (no financial content).
 - `src/lib/data/` — `bundle`, `export` (Markdown + JSON), `creditSummary`.
 - `src/lib/auth/ownership.ts` — app-level owner guard (2nd line; RLS is 1st).
 - `src/lib/ai/` — `summary` (minimization), `guardrails` (rate/spend), `adapter`
   (opt-in, disabled by default, no tools/actions).
 - `src/lib/supabase/` — browser/server clients that return `null` (setup state) when
   unconfigured.
-- `supabase/` — `migrations/0001_init.sql`, `seed.sql`, `tests/rls_cross_user.sql`.
+- `supabase/` — `migrations/0001`–`0004`, `seed.sql`, and a database test suite
+  (`tests/`, run via `scripts/db-test.sh` against a disposable Postgres).
 - `src/app/` — mobile-first UI: Today, My Plan, My Finances, Business Setup, Learn,
   Settings, Onboarding, Weekly Review.
 
@@ -76,7 +79,7 @@ deadline whose source is unverified, expired, or out-of-jurisdiction.
 
 ```bash
 npm install
-npm run test        # 96 passing
+npm run test        # 111 passing
 npm run test:db     # database isolation + deletion, disposable Postgres
 npm run typecheck   # clean
 npm run build       # succeeds
