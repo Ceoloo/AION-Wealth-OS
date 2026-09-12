@@ -140,12 +140,17 @@ has no tools and cannot file, contact creditors, open accounts, or promise retur
 - No bank logins, SSNs, full account numbers, identity documents, or raw credit-report
   uploads are ever collected.
 - Application events preserve status history without copying raw sensitive values.
-- **Backup-retention policy:** in a deployed Supabase project, automated backups follow
-  the project's configured retention window. On authenticated account deletion, live data
-  is removed immediately (cascades from `profiles`), and any residual copies in backups
-  age out within that retention window (target: ≤ 30 days) and are not restored into
-  production except for disaster recovery. Document and confirm the exact window for your
-  environment before onboarding real users.
+- **Deletion contract:** "Delete my data" removes every private record for the signed-in
+  user via a transactional, `SECURITY DEFINER` database routine (`delete_my_data()`, see
+  migration 0003) that is hard-scoped to `auth.uid()`, verifies its own postcondition, and
+  aborts rather than reporting a partial delete as success. It requires a **recent sign-in**
+  (password re-entry). It deletes DATA, **not the auth identity** — the login is retained,
+  which is why the UI says "delete my data", not "delete my account". Removing the login
+  itself requires service-role administration.
+- **Backup retention (unverified):** live rows are removed immediately, but we make **no
+  claim** about erasure from provider backups. Supabase backups expire per the hosting
+  project's configured retention window. That window must be read from the actual project
+  settings and documented here before onboarding real users — do not assume a value.
 
 ## Commercialization gate
 

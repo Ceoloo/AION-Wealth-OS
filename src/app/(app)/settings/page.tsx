@@ -3,7 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useApp } from "@/lib/store/provider";
-import { Button, Card, Disclaimer, SectionTitle } from "@/components/ui";
+import { Button, Card, Disclaimer, SectionTitle, TextInput } from "@/components/ui";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { buildExport } from "@/lib/data/export";
 import { downloadText } from "@/lib/download";
 import { nowISO, todayISO } from "@/lib/today";
@@ -11,6 +12,10 @@ import { nowISO, todayISO } from "@/lib/today";
 export default function SettingsPage() {
   const { ready, bundle, resetAll, mode, userEmail, signOut, busy, error } = useApp();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [password, setPassword] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteDone, setDeleteDone] = useState(false);
   if (!ready) return <p className="text-sm text-cloud-faint">Loading…</p>;
 
   function doExport() {
@@ -127,39 +132,135 @@ export default function SettingsPage() {
         <Card>
           <p className="text-sm text-cloud-muted">
             In real user mode, financial information is stored server-side with row-level security,
-            encrypted at rest by the provider, and never silently saved to your browser. Data export
-            and deletion require reauthentication. Backups follow a documented retention policy
-            (see the README) and are purged on deletion per that policy.
+            encrypted at rest by the provider, and never silently saved to your browser. Deleting
+            your data requires you to re-enter your password. Export does not require re-entry — it
+            only ever returns your own records.
+          </p>
+          <p className="mt-2 text-sm text-cloud-muted">
+            Deleting removes your records from the live database immediately. We do <strong>not</strong>{" "}
+            claim instant erasure from provider backups: backups expire according to the hosting
+            project&apos;s configured retention window, which must be confirmed against that project&apos;s
+            settings rather than assumed.
           </p>
         </Card>
       </div>
 
       <div>
-        <SectionTitle title="Delete data" />
+        <SectionTitle title={mode === "demo" ? "Reset demo data" : "Delete my data"} />
         <Card className="border-danger/40">
-          <p className="text-sm text-cloud-muted">
-            This clears all data in this synthetic demo (stored only in this browser). In real user
-            mode this performs authenticated account deletion.
-          </p>
-          {!confirmDelete ? (
-            <Button variant="danger" className="mt-3" onClick={() => setConfirmDelete(true)}>
-              Delete all data
-            </Button>
+          {mode === "demo" ? (
+            <>
+              <p className="text-sm text-cloud-muted">
+                Clears the synthetic demo data stored in this browser. Nothing on a server is
+                affected.
+              </p>
+              {!confirmDelete ? (
+                <Button variant="danger" className="mt-3" onClick={() => setConfirmDelete(true)}>
+                  Reset demo data
+                </Button>
+              ) : (
+                <div className="mt-3 flex gap-2">
+                  <Button
+                    variant="danger"
+                    onClick={async () => {
+                      await resetAll();
+                      setConfirmDelete(false);
+                    }}
+                  >
+                    Yes, reset the demo
+                  </Button>
+                  <Button variant="ghost" onClick={() => setConfirmDelete(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              )}
+            </>
           ) : (
-            <div className="mt-3 flex gap-2">
-              <Button
-                variant="danger"
-                onClick={() => {
-                  resetAll();
-                  setConfirmDelete(false);
-                }}
-              >
-                Yes, delete everything
-              </Button>
-              <Button variant="ghost" onClick={() => setConfirmDelete(false)}>
-                Cancel
-              </Button>
-            </div>
+            <>
+              <p className="text-sm text-cloud-muted">
+                Permanently deletes <strong>all of your data</strong> — snapshots, accounts, credit
+                issues, plan history, weekly reviews, formation and partner status, and referral
+                events. This cannot be undone.
+              </p>
+              <p className="mt-2 text-sm text-cloud-muted">
+                Your <strong>sign-in is kept</strong> so you can start over. This does not close the
+                account itself; to remove the login as well, ask an administrator.
+              </p>
+              {!confirmDelete ? (
+                <Button variant="danger" className="mt-3" onClick={() => setConfirmDelete(true)}>
+                  Delete my data
+                </Button>
+              ) : (
+                <div className="mt-3 space-y-2">
+                  <p className="text-sm text-cloud">
+                    Confirm it&apos;s you: re-enter your password.
+                  </p>
+                  <TextInput
+                    type="password"
+                    autoComplete="current-password"
+                    placeholder="Password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      variant="danger"
+                      disabled={!password || deleting}
+                      onClick={async () => {
+                        setDeleting(true);
+                        setDeleteError(null);
+                        setDeleteDone(false);
+                        try {
+                          const supabase = createSupabaseBrowserClient();
+                          if (!supabase || !userEmail) throw new Error("Not signed in.");
+                          // Recent reauthentication — the server independently
+                          // requires a fresh sign-in before it will delete.
+                          const { error: authErr } = await supabase.auth.signInWithPassword({
+                            email: userEmail,
+                            password,
+                          });
+                          if (authErr) throw new Error("That password didn't match.");
+                          const res = await resetAll();
+                          if (!res.ok) throw new Error(res.error);
+                          setDeleteDone(true);
+                          setConfirmDelete(false);
+                          setPassword("");
+                        } catch (err) {
+                          setDeleteError(
+                            err instanceof Error ? err.message : "Deletion failed. Nothing was deleted.",
+                          );
+                        } finally {
+                          setDeleting(false);
+                        }
+                      }}
+                    >
+                      {deleting ? "Deleting…" : "Permanently delete my data"}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      disabled={deleting}
+                      onClick={() => {
+                        setConfirmDelete(false);
+                        setPassword("");
+                        setDeleteError(null);
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
+              {deleteError ? (
+                <p className="mt-2 text-sm text-danger" role="alert">
+                  {deleteError} Your data was <strong>not</strong> deleted.
+                </p>
+              ) : null}
+              {deleteDone ? (
+                <p className="mt-2 text-sm text-ok" role="status">
+                  Deleted and verified — no records of yours remain.
+                </p>
+              ) : null}
+            </>
           )}
         </Card>
       </div>
