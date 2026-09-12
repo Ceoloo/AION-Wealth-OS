@@ -225,17 +225,79 @@ HEAD before changes were written; all six reproduced.
   production project and reports **NOT RUN** when a disposable Supabase project is absent,
   rather than reporting a pass it did not earn.
 
+### PR4 — action completion vs. issue resolution (review finding 6)
+- Two concepts are now distinct: **ActionStatus** (what the user did — permanent history)
+  and **IssueState** (whether the adverse fact still holds — recomputed every run).
+  Contacting a creditor keeps the action `complete` while the account still reports
+  `issueState: "active"`, and the UI says both ("Issue still open").
+- **Occurrences:** each rule fingerprints the facts that triggered it, and a completion only
+  suppresses that occurrence. `review_past_due` keys on *which* accounts are past due (a
+  different account reactivates the work, earlier completion retained as
+  `priorCompletions`); `stabilize_negative_surplus` and `build_cash_coverage` key on an
+  **episode index** counted from the dated snapshot history, so a relapse after recovery is
+  a new occurrence rather than something an old completion can mask.
+- **Legacy safety:** one-off tasks stay on the `"default"` occurrence and rows with
+  `occurrence_key IS NULL` are read as `"default"`, so existing completions/deferrals
+  survive the upgrade. A test covers this and caught a regression where keying the baseline
+  credit-report action as `"baseline"` would have dropped existing deferrals.
+- **Honest denominator:** completions of rules that no longer apply are retained in
+  `archivedCompletions` (marked resolved) and counted in *both* numerator and denominator of
+  `plan.progress`, whose `basis` string states what is counted. A step leaving the plan can
+  no longer inflate the percentage.
+- **Pilot milestones** (`src/lib/analytics/pilotEvents.ts`): onboarding completed, first plan
+  viewed, first action completed, weekly review submitted — *derived* from existing records
+  (no second data copy), carrying no financial values, free text or owner identifiers, with
+  demo activity excluded and referral conversion deliberately kept separate.
+- **`PLAN_BEFORE_PARTNERS`** ordering experiment implemented behind a flag that defaults to
+  current behaviour (`src/lib/experiments.ts`) — proposed, not imposed. Partner choices,
+  disclosures and the foundations-first lock are unchanged either way.
+- Migration `0004` adds `action_events.occurrence_key` (nullable = legacy default) + index.
+  Engine version bumped to `2026.09.2`.
+
 ### What was actually executed (2026-09-12)
 | Gate | Result |
 | --- | --- |
 | `npm run typecheck` | pass |
 | `npm run lint` | pass |
-| `npm run test` (Vitest) | **96 pass** (+14 new: SessionGuard 7, runtime schemas 7) |
+| `npm run test` (Vitest) | **111 pass** (+29 new: SessionGuard 7, runtime schemas 7, occurrence/issue-state 10, pilot milestones 5) |
 | `npm run build` | pass (14 routes) |
 | `npm run test:db` (disposable Postgres 16) | **10 assertions pass**, incl. meta-test |
-| Migrations 0001+0002+0003 applied to a scratch DB | pass (0003 executed for the first time) |
+| Migrations 0001–0004 applied to a scratch DB | pass (0003 and 0004 executed for the first time) |
 | Browser pass — demo chooser / opt-in / seed / complete / reload | pass (scripted) |
 | `npm run test:e2e` real-mode journey | **NOT RUN** — no disposable Supabase project |
+
+
+### Activating the real-mode e2e gate later
+
+The browser journey is written, self-guarded and wired into CI, but is **NOT RUN** — it
+needs a disposable Supabase project, and the free tier caps this account at **2 active
+projects**, both currently in use (`aion-wealth-os`, `AION EMPIRE SYSTEM`). Two routes were
+attempted and are recorded here so they are not re-tried blindly:
+
+- **Preview branch** — rejected by Supabase: *"Branching is supported only on the Pro plan
+  or above."* ($0.01344/hour once on Pro.)
+- **New free project** — rejected: *"2 project limit"* for active free projects.
+
+To switch it on, free a slot (pause any project — pausing does not delete data) or upgrade,
+create a throwaway project, then:
+
+```bash
+# 1. apply the schema to the throwaway project
+psql "$E2E_DATABASE_URL" -f supabase/migrations/0001_init.sql
+psql "$E2E_DATABASE_URL" -f supabase/migrations/0002_realmode.sql
+psql "$E2E_DATABASE_URL" -f supabase/migrations/0003_deletion_and_verification.sql
+psql "$E2E_DATABASE_URL" -f supabase/migrations/0004_action_occurrences.sql
+psql "$E2E_DATABASE_URL" -f supabase/seed.sql
+
+# 2. turn OFF "Confirm email" in that project's Auth settings, then create the test user
+#    (or insert a pre-confirmed user directly), and run:
+E2E_SUPABASE_URL=... E2E_SUPABASE_ANON_KEY=... E2E_EMAIL=... E2E_PASSWORD=... npm run test:e2e
+```
+
+For CI, add the same four values as repository secrets — `E2E_SUPABASE_URL`,
+`E2E_SUPABASE_ANON_KEY`, `E2E_EMAIL`, `E2E_PASSWORD`. The `integration` job picks them up
+automatically. The script refuses to run against the production project (verified: exit 2)
+and reports NOT RUN rather than passing when the secrets are absent (verified).
 
 ### Remaining limits (explicitly not claimed)
 - The real-mode browser journey has **not** been executed; it needs a disposable Supabase
@@ -247,8 +309,9 @@ HEAD before changes were written; all six reproduced.
   forbids modifying production. Deployment order below.
 - Recent-reauth uses `last_sign_in_at` within a 10-minute window; it is not a WebAuthn-grade
   re-assertion.
-- Engine completion semantics (finding 6) are **unchanged** — that is the next product
-  increment, deliberately out of this reliability sprint.
+- Engine completion semantics (finding 6) are addressed in PR4 above. The occurrence keys
+  are deliberately coarse (which accounts, which episode); they are not a general-purpose
+  change-detection system, and a rule whose facts churn frequently would reactivate often.
 
 ### Deployment / migration order
 1. Apply `supabase/migrations/0003_deletion_and_verification.sql` to the target project
