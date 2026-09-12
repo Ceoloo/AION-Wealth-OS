@@ -4,6 +4,7 @@ import { summarize } from "../domain/finance";
 import { formatCents } from "../domain/money";
 import { generatePlan } from "../domain/plan/engine";
 import { CONTENT_SOURCES } from "../domain/sources";
+import { referralFunnel } from "../domain/partners";
 import type { Metric } from "../domain/finance";
 
 /**
@@ -161,6 +162,8 @@ export function buildExport(bundle: UserDataBundle, asOf: string, generatedAt: s
     weeklyReviews: bundle.weeklyReviews,
     formationStatuses: bundle.formationStatuses,
     partnerStatuses: bundle.partnerStatuses,
+    referralEvents: bundle.referralEvents,
+    referralFunnel: referralFunnel(bundle.referralEvents),
     computed: {
       summary: summary
         ? {

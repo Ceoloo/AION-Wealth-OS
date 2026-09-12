@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { partnerVisibility, isFoundationStable, PARTNERS, AFFILIATE_DISCLOSURE } from "./partners";
+import { partnerVisibility, isFoundationStable, referralFunnel, PARTNERS, AFFILIATE_DISCLOSURE, type ReferralEvent } from "./partners";
 import { summarize } from "./finance";
 import type { Account, FinancialSnapshot } from "./types";
 
@@ -66,5 +66,35 @@ describe("partner foundations gate", () => {
     expect(AFFILIATE_DISCLOSURE.toLowerCase()).toMatch(/referral/);
     expect(AFFILIATE_DISCLOSURE.toLowerCase()).toMatch(/earn a reward|may earn/);
     expect(AFFILIATE_DISCLOSURE.toLowerCase()).toMatch(/not.*advice/);
+  });
+});
+
+describe("referralFunnel", () => {
+  const ev = (partnerId: string, type: "click" | "signup_reported", at: string): ReferralEvent => ({
+    id: `${partnerId}-${at}`, ownerId: "u1", partnerId, category: "credit_builder", type, at,
+  });
+
+  it("aggregates clicks and reported signups per app with last-click time", () => {
+    const events = [
+      ev("kikoff", "click", "2026-09-10T00:00:00.000Z"),
+      ev("kikoff", "click", "2026-09-12T00:00:00.000Z"),
+      ev("kikoff", "signup_reported", "2026-09-12T01:00:00.000Z"),
+      ev("self", "click", "2026-09-11T00:00:00.000Z"),
+    ];
+    const rows = referralFunnel(events);
+    const kikoff = rows.find((r) => r.partnerId === "kikoff")!;
+    expect(kikoff.clicks).toBe(2);
+    expect(kikoff.reportedSignups).toBe(1);
+    expect(kikoff.lastClickAt).toBe("2026-09-12T00:00:00.000Z");
+    const coinbase = rows.find((r) => r.partnerId === "coinbase")!;
+    expect(coinbase.clicks).toBe(0);
+    expect(coinbase.lastClickAt).toBeNull();
+    // one row per known partner
+    expect(rows.length).toBe(PARTNERS.length);
+  });
+
+  it("returns zeroed rows for no events", () => {
+    const rows = referralFunnel([]);
+    expect(rows.every((r) => r.clicks === 0 && r.reportedSignups === 0)).toBe(true);
   });
 });

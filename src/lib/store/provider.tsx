@@ -14,6 +14,7 @@ import {
   addSnapshot,
   addWeeklyReview,
   recordActionEvent,
+  recordReferralEvent,
   removeAccount,
   setFormationStatus,
   setPartnerStatus,
@@ -23,6 +24,7 @@ import {
 } from "./mutations";
 import type { FormationItemStatus } from "../domain/formation";
 import type { PartnerStatus } from "../domain/partners";
+import { PARTNERS } from "../domain/partners";
 import type {
   AccountInput,
   CreditIssueInput,
@@ -57,6 +59,10 @@ interface AppState {
   setFormationStatus: (itemId: string, status: FormationItemStatus) => void;
   setPartnerStatus: (partnerId: string, status: PartnerStatus) => void;
   acknowledgePartners: () => void;
+  /** Record a referral link click (tracking event) and mark the app as clicked. */
+  recordReferralClick: (partnerId: string) => void;
+  /** User self-reports they signed up (tracking event) and mark as signed up. */
+  reportPartnerSignup: (partnerId: string) => void;
 }
 
 const AppContext = createContext<AppState | null>(null);
@@ -85,6 +91,7 @@ function loadDemo(): UserDataBundle | null {
       formationStatuses: parsed.formationStatuses ?? {},
       partnerStatuses: parsed.partnerStatuses ?? {},
       partnersAcknowledged: parsed.partnersAcknowledged ?? false,
+      referralEvents: parsed.referralEvents ?? [],
     } as UserDataBundle;
   } catch {
     return null;
@@ -154,6 +161,23 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     setFormationStatus: (itemId, status) => commit(setFormationStatus(bundle, itemId, status)),
     setPartnerStatus: (partnerId, status) => commit(setPartnerStatus(bundle, partnerId, status)),
     acknowledgePartners: () => commit(acknowledgePartners(bundle)),
+    recordReferralClick: (partnerId) => {
+      const category = PARTNERS.find((p) => p.id === partnerId)?.category ?? "banking";
+      let next = recordReferralEvent(bundle, { partnerId, category, type: "click" }, ctx);
+      // A click is not a signup — only advance status if it wouldn't downgrade a
+      // stronger self-reported state.
+      const cur = bundle.partnerStatuses[partnerId];
+      if (cur !== "signed_up" && cur !== "already_use") {
+        next = setPartnerStatus(next, partnerId, "clicked");
+      }
+      commit(next);
+    },
+    reportPartnerSignup: (partnerId) => {
+      const category = PARTNERS.find((p) => p.id === partnerId)?.category ?? "banking";
+      let next = recordReferralEvent(bundle, { partnerId, category, type: "signup_reported" }, ctx);
+      next = setPartnerStatus(next, partnerId, "signed_up");
+      commit(next);
+    },
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

@@ -7,7 +7,7 @@ import type {
   WeeklyReview,
 } from "../domain/types";
 import type { FormationItemStatus } from "../domain/formation";
-import type { PartnerStatus } from "../domain/partners";
+import type { PartnerStatus, ReferralEvent } from "../domain/partners";
 
 /**
  * The complete set of one user's private records. This is the unit of export,
@@ -28,6 +28,8 @@ export interface UserDataBundle {
   partnerStatuses: Record<string, PartnerStatus>;
   /** Whether the user has seen and acknowledged the partner-tools prompt. */
   partnersAcknowledged: boolean;
+  /** Append-only referral click / signup-reported tracking events. */
+  referralEvents: ReferralEvent[];
 }
 
 export function emptyBundle(ownerId: string): UserDataBundle {
@@ -42,6 +44,7 @@ export function emptyBundle(ownerId: string): UserDataBundle {
     formationStatuses: {},
     partnerStatuses: {},
     partnersAcknowledged: false,
+    referralEvents: [],
   };
 }
 

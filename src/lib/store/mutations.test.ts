@@ -4,6 +4,7 @@ import {
   acknowledgePartners,
   addSnapshot,
   recordActionEvent,
+  recordReferralEvent,
   setPartnerStatus,
   setProfile,
   upsertAccount,
@@ -73,6 +74,17 @@ describe("mutations", () => {
     expect(b.partnersAcknowledged).toBe(true);
     // other fields preserved
     expect(b.partnerStatuses.kikoff).toBe("signed_up");
+  });
+
+  it("appends referral tracking events (append-only)", () => {
+    const c = ctx();
+    let b = emptyBundle("u1");
+    b = recordReferralEvent(b, { partnerId: "kikoff", category: "credit_builder", type: "click" }, c);
+    b = recordReferralEvent(b, { partnerId: "kikoff", category: "credit_builder", type: "signup_reported" }, c);
+    expect(b.referralEvents.length).toBe(2);
+    expect(b.referralEvents[0]!.type).toBe("click");
+    expect(b.referralEvents[0]!.ownerId).toBe("u1");
+    expect(b.referralEvents[1]!.type).toBe("signup_reported");
   });
 
   it("upsertAccount updates an existing account by id", () => {

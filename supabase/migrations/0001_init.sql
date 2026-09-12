@@ -138,6 +138,20 @@ create table if not exists public.weekly_reviews (
 create index if not exists idx_weekly_owner on public.weekly_reviews(owner_id, week_of);
 
 -- ---------------------------------------------------------------------------
+-- referral_events (append-only referral click / signup-reported tracking)
+-- No financial content or account identifiers are stored here.
+-- ---------------------------------------------------------------------------
+create table if not exists public.referral_events (
+  id         uuid primary key default gen_random_uuid(),
+  owner_id   uuid not null references auth.users(id) on delete cascade,
+  partner_id text not null,
+  category   text not null check (category in ('credit_builder','banking','investing_speculative')),
+  type       text not null check (type in ('click','signup_reported')),
+  at         timestamptz not null default now()
+);
+create index if not exists idx_referral_events_owner on public.referral_events(owner_id, partner_id);
+
+-- ---------------------------------------------------------------------------
 -- ai_usage (optional; token/cost accounting WITHOUT financial content)
 -- ---------------------------------------------------------------------------
 create table if not exists public.ai_usage (
@@ -177,6 +191,7 @@ alter table public.credit_issues       enable row level security;
 alter table public.action_events       enable row level security;
 alter table public.formation_checklists enable row level security;
 alter table public.weekly_reviews      enable row level security;
+alter table public.referral_events     enable row level security;
 alter table public.ai_usage            enable row level security;
 alter table public.content_sources     enable row level security;
 
@@ -225,6 +240,10 @@ create policy wr_select on public.weekly_reviews for select using (auth.uid() = 
 create policy wr_insert on public.weekly_reviews for insert with check (auth.uid() = owner_id);
 create policy wr_update on public.weekly_reviews for update using (auth.uid() = owner_id) with check (auth.uid() = owner_id);
 create policy wr_delete on public.weekly_reviews for delete using (auth.uid() = owner_id);
+
+-- referral_events (append-only: select + insert, no update/delete policy) -----
+create policy re_select on public.referral_events for select using (auth.uid() = owner_id);
+create policy re_insert on public.referral_events for insert with check (auth.uid() = owner_id);
 
 -- ai_usage ------------------------------------------------------------------
 create policy ai_select on public.ai_usage for select using (auth.uid() = owner_id);

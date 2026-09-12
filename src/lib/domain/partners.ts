@@ -15,7 +15,25 @@ import type { FinanceSummary } from "./finance";
 
 export type PartnerCategory = "credit_builder" | "banking" | "investing_speculative";
 
-export type PartnerStatus = "not_started" | "signed_up" | "already_use" | "skipped";
+export type PartnerStatus = "not_started" | "clicked" | "signed_up" | "already_use" | "skipped";
+
+/**
+ * An append-only referral tracking event. Records only the partner, its
+ * category, and when — NO financial content or account identifiers. `click`
+ * fires when the user opens a referral link; `signup_reported` is the user's
+ * own self-report (a click is not a signup). Used to measure the entry-level
+ * referral funnel per user; aggregate across users server-side.
+ */
+export type ReferralEventType = "click" | "signup_reported";
+
+export interface ReferralEvent {
+  id: string;
+  ownerId: string;
+  partnerId: string;
+  category: PartnerCategory;
+  type: ReferralEventType;
+  at: string; // ISODateTime
+}
 
 export interface Partner {
   id: string;
@@ -101,6 +119,38 @@ export const PARTNERS: Partner[] = [
       "Event-contract trading is speculative and you can lose your stake. It is not saving or investing for your foundation. Only consider this once you are financially stable.",
   },
 ];
+
+export interface PartnerFunnelRow {
+  partnerId: string;
+  name: string;
+  category: PartnerCategory;
+  clicks: number;
+  reportedSignups: number;
+  lastClickAt: string | null;
+}
+
+/**
+ * Aggregate referral events into a per-app funnel (clicks + self-reported
+ * signups). Pure and deterministic; reused by the export and the UI. For a
+ * single user this is their own activity — aggregate across users server-side.
+ */
+export function referralFunnel(events: ReferralEvent[]): PartnerFunnelRow[] {
+  return PARTNERS.map((p) => {
+    const mine = events.filter((e) => e.partnerId === p.id);
+    const clicks = mine.filter((e) => e.type === "click");
+    return {
+      partnerId: p.id,
+      name: p.name,
+      category: p.category,
+      clicks: clicks.length,
+      reportedSignups: mine.filter((e) => e.type === "signup_reported").length,
+      lastClickAt: clicks.reduce<string | null>(
+        (max, e) => (max === null || e.at > max ? e.at : max),
+        null,
+      ),
+    };
+  });
+}
 
 export function partnersByCategory(list: Partner[]): Record<PartnerCategory, Partner[]> {
   return {

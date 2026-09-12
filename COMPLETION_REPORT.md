@@ -100,6 +100,13 @@ stable). Enforced in `src/lib/domain/partners.ts`, tested in `partners.test.ts` 
 - Partner offers are attributed to the partner (e.g. Self's "47-point*") with "results
   vary, terms apply" — never presented as an AION promise or guarantee.
 - Per-user partner statuses and acknowledgement persist and are included in export.
+- **Per-app referral-click tracking:** append-only `referralEvents` record every link
+  open (`click`) and self-reported signup (`signup_reported`) with partner id + category
+  + timestamp — no financial content. A click marks status `clicked` (not `signed_up`);
+  users self-report actual signups separately, so the funnel stays honest. `referralFunnel`
+  aggregates clicks/signups per app (shown on `/partners`, included in export as
+  `referralFunnel`). Mirrored server-side by the `referral_events` table (RLS, append-only).
+  Aggregate across users server-side for portfolio-level conversion.
 
 Note: this intentionally reverses the original spec's "omit affiliate offers" line at the
 owner's direction; the honesty/guardrail constraints were preserved.

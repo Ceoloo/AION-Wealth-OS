@@ -7,6 +7,7 @@ import {
   AFFILIATE_DISCLOSURE,
   PARTNERS,
   partnerVisibility,
+  referralFunnel,
   type Partner,
   type PartnerStatus,
 } from "@/lib/domain/partners";
@@ -20,14 +21,19 @@ const CATEGORY_LABEL: Record<Partner["category"], string> = {
 
 const STATUS_LABEL: Record<PartnerStatus, string> = {
   not_started: "Not set up",
+  clicked: "Opened",
   signed_up: "Signed up",
   already_use: "Already use it",
   skipped: "Skipped",
 };
 
 function PartnerRow({ partner }: { partner: Partner }) {
-  const { bundle, setPartnerStatus } = useApp();
+  const { bundle, setPartnerStatus, recordReferralClick, reportPartnerSignup } = useApp();
   const status = bundle.partnerStatuses[partner.id] ?? "not_started";
+  const clicks = bundle.referralEvents.filter(
+    (e) => e.partnerId === partner.id && e.type === "click",
+  ).length;
+  const done = status === "signed_up" || status === "already_use";
   return (
     <Card className="p-3">
       <div className="flex items-start justify-between gap-2">
@@ -35,7 +41,7 @@ function PartnerRow({ partner }: { partner: Partner }) {
           <p className="font-medium text-cloud">{partner.name}</p>
           <p className="mt-0.5 text-sm text-cloud-muted">{partner.what}</p>
         </div>
-        <Badge tone={status === "signed_up" || status === "already_use" ? "ok" : "neutral"}>
+        <Badge tone={done ? "ok" : status === "clicked" ? "teal" : "neutral"}>
           {STATUS_LABEL[status]}
         </Badge>
       </div>
@@ -50,18 +56,37 @@ function PartnerRow({ partner }: { partner: Partner }) {
       ) : null}
 
       <div className="mt-3 flex flex-wrap gap-2">
-        <a href={partner.url} target="_blank" rel="noopener noreferrer nofollow sponsored">
-          <Button variant="primary" onClick={() => setPartnerStatus(partner.id, "signed_up")}>
-            Open {partner.name} →
-          </Button>
+        {/* The click is tracked before navigation; the link still opens normally. */}
+        <a
+          href={partner.url}
+          target="_blank"
+          rel="noopener noreferrer nofollow sponsored"
+          onClick={() => recordReferralClick(partner.id)}
+        >
+          <Button variant="primary">Open {partner.name} →</Button>
         </a>
-        <Button variant="secondary" onClick={() => setPartnerStatus(partner.id, "already_use")}>
-          I already use it
-        </Button>
-        <Button variant="ghost" onClick={() => setPartnerStatus(partner.id, "skipped")}>
-          Skip for now
-        </Button>
+        {status !== "signed_up" ? (
+          <Button variant="secondary" onClick={() => reportPartnerSignup(partner.id)}>
+            I signed up
+          </Button>
+        ) : null}
+        {!done ? (
+          <>
+            <Button variant="secondary" onClick={() => setPartnerStatus(partner.id, "already_use")}>
+              I already use it
+            </Button>
+            <Button variant="ghost" onClick={() => setPartnerStatus(partner.id, "skipped")}>
+              Skip for now
+            </Button>
+          </>
+        ) : null}
       </div>
+
+      {clicks > 0 ? (
+        <p className="mt-2 text-[11px] text-cloud-faint">
+          Opened {clicks} time{clicks === 1 ? "" : "s"}
+        </p>
+      ) : null}
     </Card>
   );
 }
@@ -95,6 +120,8 @@ export function Partners({ mode }: { mode: "gate" | "manage" }) {
       )}
 
       <Disclaimer>{AFFILIATE_DISCLOSURE}</Disclaimer>
+
+      {mode === "manage" ? <ReferralActivity /> : null}
 
       {(["credit_builder", "banking", "investing_speculative"] as const).map((cat) => {
         const items = availByCat[cat];
@@ -140,6 +167,30 @@ export function Partners({ mode }: { mode: "gate" | "manage" }) {
         </div>
       ) : null}
     </div>
+  );
+}
+
+function ReferralActivity() {
+  const { bundle } = useApp();
+  const rows = referralFunnel(bundle.referralEvents).filter(
+    (r) => r.clicks > 0 || r.reportedSignups > 0,
+  );
+  if (rows.length === 0) return null;
+  return (
+    <Card className="p-0">
+      <p className="border-b border-ink-line px-4 py-2 text-xs font-semibold uppercase tracking-wide text-cloud-faint">
+        Your referral activity
+      </p>
+      {rows.map((r) => (
+        <div key={r.partnerId} className="flex items-center justify-between px-4 py-2 text-sm">
+          <span className="text-cloud">{r.name}</span>
+          <span className="text-xs text-cloud-faint">
+            {r.clicks} open{r.clicks === 1 ? "" : "s"}
+            {r.reportedSignups > 0 ? ` · ${r.reportedSignups} signup reported` : ""}
+          </span>
+        </div>
+      ))}
+    </Card>
   );
 }
 

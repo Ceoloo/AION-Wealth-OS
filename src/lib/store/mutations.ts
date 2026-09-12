@@ -47,7 +47,36 @@ function clone(b: UserDataBundle): UserDataBundle {
     formationStatuses: { ...b.formationStatuses },
     partnerStatuses: { ...b.partnerStatuses },
     partnersAcknowledged: b.partnersAcknowledged,
+    referralEvents: [...b.referralEvents],
   };
+}
+
+/**
+ * Append a referral tracking event (click or self-reported signup). Append-only:
+ * events are never mutated or removed, so the funnel history is preserved.
+ */
+export function recordReferralEvent(
+  bundle: UserDataBundle,
+  args: {
+    partnerId: string;
+    category: import("../domain/partners").PartnerCategory;
+    type: import("../domain/partners").ReferralEventType;
+  },
+  ctx: Ctx,
+): UserDataBundle {
+  const b = clone(bundle);
+  b.referralEvents = [
+    ...b.referralEvents,
+    {
+      id: ctx.id(),
+      ownerId: ctx.ownerId,
+      partnerId: args.partnerId,
+      category: args.category,
+      type: args.type,
+      at: ctx.now(),
+    },
+  ];
+  return b;
 }
 
 export function setPartnerStatus(
