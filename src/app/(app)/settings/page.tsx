@@ -47,6 +47,19 @@ export default function SettingsPage() {
       </div>
 
       <div>
+        <SectionTitle title="Starter tools" subtitle="Recommended partner apps to build your foundation." />
+        <Card>
+          <p className="text-sm text-cloud-muted">
+            Set up credit-builder and banking apps, and unlock higher-risk investing tools once your
+            foundation is stable.
+          </p>
+          <Link href="/partners" className="mt-2 inline-block text-sm text-teal underline">
+            Open starter tools →
+          </Link>
+        </Card>
+      </div>
+
+      <div>
         <SectionTitle title="Weekly review" subtitle="Record progress and compare to your baseline." />
         <Card>
           <Link href="/review" className="text-sm text-teal underline">

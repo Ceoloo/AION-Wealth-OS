@@ -112,5 +112,7 @@ export function buildDemoBundle(): UserDataBundle {
     actionEvents: [],
     weeklyReviews: [],
     formationStatuses: {},
+    partnerStatuses: {},
+    partnersAcknowledged: false,
   };
 }

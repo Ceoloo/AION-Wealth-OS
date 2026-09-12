@@ -6,11 +6,18 @@ import { ActionCard } from "@/components/ActionCard";
 import { Button, Card, Disclaimer, EmptyState, SectionTitle } from "@/components/ui";
 import { latestSnapshot } from "@/lib/data/bundle";
 import { todayISO } from "@/lib/today";
+import { Partners } from "@/components/Partners";
 
 export default function TodayPage() {
   const { ready, hasData, bundle, plan, loadDemoSeed } = useApp();
 
   if (!ready) return <p className="text-sm text-cloud-faint">Loading…</p>;
+
+  // Soft gate: once the user has started, prompt the starter tools once before
+  // showing the plan. They can set up, mark "already use it", or skip — then continue.
+  if (hasData && !bundle.partnersAcknowledged) {
+    return <Partners mode="gate" />;
+  }
 
   if (!hasData) {
     return (

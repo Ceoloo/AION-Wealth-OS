@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { emptyBundle } from "../data/bundle";
 import {
+  acknowledgePartners,
   addSnapshot,
   recordActionEvent,
+  setPartnerStatus,
   setProfile,
   upsertAccount,
 } from "./mutations";
@@ -60,6 +62,17 @@ describe("mutations", () => {
     b = setProfile(b, { ...profileInput(), experience: "some" }, c);
     expect(b.profile!.createdAt).toBe(created);
     expect(b.profile!.experience).toBe("some");
+  });
+
+  it("tracks partner status and acknowledgement", () => {
+    let b = emptyBundle("u1");
+    expect(b.partnersAcknowledged).toBe(false);
+    b = setPartnerStatus(b, "kikoff", "signed_up");
+    expect(b.partnerStatuses.kikoff).toBe("signed_up");
+    b = acknowledgePartners(b);
+    expect(b.partnersAcknowledged).toBe(true);
+    // other fields preserved
+    expect(b.partnerStatuses.kikoff).toBe("signed_up");
   });
 
   it("upsertAccount updates an existing account by id", () => {

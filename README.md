@@ -36,6 +36,12 @@ Core loop: **assess → explain → plan → act → record evidence → review 
   are withheld unless a verified, in-jurisdiction, non-expired source backs them.
 - **Weekly review** — baseline vs. latest with dates and data completeness; separates
   actions taken from financial outcomes.
+- **Starter tools (partner referrals)** — a soft-gate onboarding step presents recommended
+  free/low-cost apps (credit-builders, banking, and — only once the user is financially
+  stable — investing). Users can sign up, mark "already use it," or skip, then continue.
+  FTC affiliate disclosure is shown wherever links appear; speculative apps (crypto, event
+  contracts) are locked behind the same stabilization guardrail the plan engine uses.
+  Revisitable anytime under Settings → Starter tools.
 - **Export** (Markdown plan + structured JSON) and **account deletion**.
 - **Optional AI educator** — server-side adapter, opt-in, minimized summary only,
   rate/spend guardrails. **Off by default; the app is fully usable without it.**

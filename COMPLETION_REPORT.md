@@ -84,6 +84,26 @@ psql "$DATABASE_URL" -f supabase/migrations/0001_init.sql
 psql "$DATABASE_URL" -f supabase/tests/rls_cross_user.sql   # PASS
 ```
 
+## Partner referrals (added post-v0.1 at owner's request)
+
+Six referral apps are integrated as entry-level value: Kikoff, Self (credit-builders),
+Chime, Cash App (banking), Coinbase, Kalshi (investing/speculative). Design decisions
+confirmed with the owner: **soft gate** (a required onboarding step everyone sees, but
+signup is optional/skippable) and **foundations-first** (speculative apps locked until
+stable). Enforced in `src/lib/domain/partners.ts`, tested in `partners.test.ts` (8 tests):
+
+- FTC affiliate disclosure (`AFFILIATE_DISCLOSURE`) shown wherever links appear; outbound
+  links carry `rel="nofollow sponsored"`.
+- Coinbase/Kalshi locked unless surplus ≥ 0, no past-due, and ≥ 3 months cash coverage —
+  the same "stabilize before you speculate" ethic as the plan engine. Unknown data is
+  treated as *not* stable.
+- Partner offers are attributed to the partner (e.g. Self's "47-point*") with "results
+  vary, terms apply" — never presented as an AION promise or guarantee.
+- Per-user partner statuses and acknowledgement persist and are included in export.
+
+Note: this intentionally reverses the original spec's "omit affiliate offers" line at the
+owner's direction; the honesty/guardrail constraints were preserved.
+
 ## Known limitations / blockers
 
 - **RLS test is not run in CI here** (no live Postgres in this environment). The script is

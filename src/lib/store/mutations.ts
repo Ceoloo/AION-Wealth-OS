@@ -45,7 +45,25 @@ function clone(b: UserDataBundle): UserDataBundle {
     actionEvents: [...b.actionEvents],
     weeklyReviews: [...b.weeklyReviews],
     formationStatuses: { ...b.formationStatuses },
+    partnerStatuses: { ...b.partnerStatuses },
+    partnersAcknowledged: b.partnersAcknowledged,
   };
+}
+
+export function setPartnerStatus(
+  bundle: UserDataBundle,
+  partnerId: string,
+  status: import("../domain/partners").PartnerStatus,
+): UserDataBundle {
+  const b = clone(bundle);
+  b.partnerStatuses = { ...b.partnerStatuses, [partnerId]: status };
+  return b;
+}
+
+export function acknowledgePartners(bundle: UserDataBundle): UserDataBundle {
+  const b = clone(bundle);
+  b.partnersAcknowledged = true;
+  return b;
 }
 
 export function setFormationStatus(

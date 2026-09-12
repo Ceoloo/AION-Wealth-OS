@@ -160,6 +160,7 @@ export function buildExport(bundle: UserDataBundle, asOf: string, generatedAt: s
     actionEvents: bundle.actionEvents,
     weeklyReviews: bundle.weeklyReviews,
     formationStatuses: bundle.formationStatuses,
+    partnerStatuses: bundle.partnerStatuses,
     computed: {
       summary: summary
         ? {

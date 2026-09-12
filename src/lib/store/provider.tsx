@@ -9,17 +9,20 @@ import type { GeneratedPlan } from "../domain/types";
 import { nowISO, todayISO } from "../today";
 import type { Ctx } from "./mutations";
 import {
+  acknowledgePartners,
   addCreditIssue,
   addSnapshot,
   addWeeklyReview,
   recordActionEvent,
   removeAccount,
   setFormationStatus,
+  setPartnerStatus,
   setProfile,
   updateCreditIssue,
   upsertAccount,
 } from "./mutations";
 import type { FormationItemStatus } from "../domain/formation";
+import type { PartnerStatus } from "../domain/partners";
 import type {
   AccountInput,
   CreditIssueInput,
@@ -52,6 +55,8 @@ interface AppState {
   actionEvent: (args: { actionId: string; ruleId: string; type: ActionEventType; reason?: string | null }) => void;
   saveWeeklyReview: (input: WeeklyReviewInput) => void;
   setFormationStatus: (itemId: string, status: FormationItemStatus) => void;
+  setPartnerStatus: (partnerId: string, status: PartnerStatus) => void;
+  acknowledgePartners: () => void;
 }
 
 const AppContext = createContext<AppState | null>(null);
@@ -78,6 +83,8 @@ function loadDemo(): UserDataBundle | null {
       ...emptyBundle(parsed.ownerId ?? DEMO_OWNER_ID),
       ...parsed,
       formationStatuses: parsed.formationStatuses ?? {},
+      partnerStatuses: parsed.partnerStatuses ?? {},
+      partnersAcknowledged: parsed.partnersAcknowledged ?? false,
     } as UserDataBundle;
   } catch {
     return null;
@@ -145,6 +152,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     actionEvent: (args) => commit(recordActionEvent(bundle, args, ctx)),
     saveWeeklyReview: (input) => commit(addWeeklyReview(bundle, input, ctx)),
     setFormationStatus: (itemId, status) => commit(setFormationStatus(bundle, itemId, status)),
+    setPartnerStatus: (partnerId, status) => commit(setPartnerStatus(bundle, partnerId, status)),
+    acknowledgePartners: () => commit(acknowledgePartners(bundle)),
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
