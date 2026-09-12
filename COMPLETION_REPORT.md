@@ -165,6 +165,17 @@ project (no Supabase available in this environment).
 - Accessibility audit pass (screen-reader labels on all interactive controls) and an
   automated a11y check.
 
+## Commercialization compliance review
+
+A full commercialization-gate review — credit-repair (CROA + state CSO), the referral/
+affiliate links (FTC endorsement disclosure, per-partner terms, the GLBA "finder" trigger),
+investing/crypto/event-contract referrals, UPL for formation, privacy/data-security
+(GLBA Safeguards + state privacy laws), and advertising/UDAP — is documented in
+`docs/COMPLIANCE_REVIEW.md`. It grounds each area in primary FTC/SEC/IRS/CROA sources, maps
+what the codebase already mitigates, lists open gaps, and names the licensed reviewer needed
+per area. It is a scoping document, not legal advice, and is a gate on commercial launch —
+not on the private pilot.
+
 ## Explicitly out of scope (hard boundaries, per spec)
 
 No custody, money movement, bank aggregation, paid subscriptions, credit-repair
