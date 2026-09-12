@@ -193,6 +193,7 @@ export async function recordActionEventAction(args: {
   ruleId: string;
   type: ActionEventType;
   reason?: string | null;
+  occurrenceKey?: string | null;
 }): Promise<UserDataBundle> {
   const { supabase, uid } = await requireCtx();
   // Runtime validation. Rejects `completed_verified` outright: ownership is not
@@ -204,6 +205,7 @@ export async function recordActionEventAction(args: {
     rule_id: input.ruleId,
     type: input.type,
     reason: input.reason ?? null,
+    occurrence_key: input.occurrenceKey ?? null,
   });
   if (error) throw new Error(error.message);
   return loadBundle(supabase, uid);

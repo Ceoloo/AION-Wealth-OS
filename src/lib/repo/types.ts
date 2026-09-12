@@ -39,7 +39,13 @@ export interface Repository {
   ): Promise<UserDataBundle>;
   recordActionEvent(
     bundle: UserDataBundle,
-    args: { actionId: string; ruleId: string; type: ActionEventType; reason?: string | null },
+    args: {
+      actionId: string;
+      ruleId: string;
+      type: ActionEventType;
+      reason?: string | null;
+      occurrenceKey?: string | null;
+    },
   ): Promise<UserDataBundle>;
   addWeeklyReview(bundle: UserDataBundle, input: WeeklyReviewInput): Promise<UserDataBundle>;
   setFormationStatus(

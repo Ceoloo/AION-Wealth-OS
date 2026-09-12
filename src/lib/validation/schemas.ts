@@ -137,6 +137,8 @@ export const actionEventArgsSchema = z
     ruleId: engineIdSchema,
     type: selfReportableActionEventTypeSchema,
     reason: z.string().max(500).nullable().optional(),
+    /** Which occurrence of the rule this refers to; NULL = legacy/default. */
+    occurrenceKey: z.string().max(500).nullable().optional(),
   })
   .superRefine((v, ctx) => {
     if ((v.type === "skipped" || v.type === "deferred") && !v.reason?.trim()) {

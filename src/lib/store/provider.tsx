@@ -96,7 +96,13 @@ interface AppState {
   deleteAccount: (id: string) => Promise<MutationResult>;
   createCreditIssue: (input: CreditIssueInput) => Promise<MutationResult>;
   editCreditIssue: (id: string, input: CreditIssueInput) => Promise<MutationResult>;
-  actionEvent: (args: { actionId: string; ruleId: string; type: ActionEventType; reason?: string | null }) => Promise<MutationResult>;
+  actionEvent: (args: {
+    actionId: string;
+    ruleId: string;
+    type: ActionEventType;
+    reason?: string | null;
+    occurrenceKey?: string | null;
+  }) => Promise<MutationResult>;
   saveWeeklyReview: (input: WeeklyReviewInput) => Promise<MutationResult>;
   setFormationStatus: (itemId: string, status: FormationItemStatus) => Promise<MutationResult>;
   setPartnerStatus: (partnerId: string, status: PartnerStatus) => Promise<MutationResult>;
@@ -304,6 +310,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         generatedAt: nowISO(),
         profile: bundle.profile,
         snapshot: latest(bundle),
+        snapshots: bundle.snapshots,
         accounts: bundle.accounts,
         creditIssues: bundle.creditIssues,
         events: bundle.actionEvents,
