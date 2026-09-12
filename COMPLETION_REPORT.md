@@ -8,10 +8,10 @@ the credit and formation workspaces, weekly review, exports, deletion, and an op
 (off-by-default) AI layer. Real user mode ships with Supabase schema, RLS, seed content,
 and a cross-user isolation test; it shows an honest setup state until configured.
 
-- **Build:** `npm run build` ✅ (12 routes, static)
+- **Build:** `npm run build` ✅ (14 routes, static)
 - **Typecheck:** `tsc --noEmit` ✅
 - **Lint:** `next lint` ✅ (no warnings/errors)
-- **Tests:** `vitest run` ✅ **65 passing** across 8 files
+- **Tests:** `vitest run` ✅ **96 passing** (see the reliability-sprint evidence table below)
 
 ## Architecture
 
@@ -58,7 +58,9 @@ and a cross-user isolation test; it shows an honest setup state until configured
    out-of-scope intents are refused before any call. `ai.test.ts` covers guardrails +
    minimization.
 9. **Export & deletion work; mobile usable; build/typecheck pass.** ✅
-   Settings exports Markdown+JSON and performs confirmed deletion; layout is single-column
+   (Deletion was materially rewritten in the reliability sprint — the original
+   implementation reported success without deleting everything.)
+   Settings exports Markdown+JSON and performs verified deletion; layout is single-column
    within a 430px app frame (works at 390px); build + typecheck green.
 
 ## Source verification (2026-09-12)
@@ -74,7 +76,8 @@ deadline whose source is unverified, expired, or out-of-jurisdiction.
 
 ```bash
 npm install
-npm run test        # 65 passing
+npm run test        # 96 passing
+npm run test:db     # database isolation + deletion, disposable Postgres
 npm run typecheck   # clean
 npm run build       # succeeds
 npm run dev         # open, click "Open the demo workspace", then Today → complete an
@@ -124,8 +127,9 @@ falls back to the synthetic demo (no fake sign-in).
   the authenticated user (or throws `AUTH_REQUIRED`), validates with the shared Zod schemas,
   stamps `owner_id`, writes as the user (RLS applies — service role never used), and returns
   a freshly-loaded bundle. Covers profile, snapshots, accounts, credit issues, action
-  events, weekly reviews, formation + partner statuses, referral events, and authenticated
-  deletion (cascades from `profiles`).
+  events, weekly reviews, formation + partner statuses, referral events, and data deletion
+  (via the transactional `delete_my_data()` routine added in migration 0003 — the original
+  "cascades from profiles" claim was wrong; see the reliability sprint).
 - **Loader** (`src/lib/supabase/data.ts`): assembles a `UserDataBundle` from all tables,
   filtering by `owner_id` explicitly as defense-in-depth on top of RLS.
 - **Mappers** (`src/lib/supabase/mappers.ts`): pure snake↔camel row mapping, unit-tested
@@ -164,6 +168,95 @@ project (no Supabase available in this environment).
 - Reminders/notifications for follow-up dates (credit issues, biennial statement).
 - Accessibility audit pass (screen-reader labels on all interactive controls) and an
   automated a11y check.
+
+## Pilot reliability sprint (PR1–PR3)
+
+Addresses the September 2026 source review. Every finding was re-verified against
+HEAD before changes were written; all six reproduced.
+
+### PR1 — explicit session state and confirmed saves
+- Session state machine replaces catch-to-demo: `initializing / signed_out / demo /
+  auth_loading / auth_ready / session_expired / error`. A failed real-mode load or an
+  expired session can no longer route a pending financial write to localStorage.
+- Demo is entered only by explicit choice (persisted opt-in); anonymous visitors get a
+  chooser, and the demo is labelled synthetic with a sign-in handoff instead of inviting
+  real figures. No demo → real migration path.
+- `SessionGuard` (unit-tested) provides session-generation guarding and a serialized write
+  queue: stale-generation loads/mutations are discarded and older responses cannot
+  overwrite newer state. Activations guarded at start and completion; auth-callback errors
+  caught; private state cleared on sign-out/account change.
+- Mutations return `MutationResult`; all six previously fire-and-forget forms now await
+  confirmation, retain input on failure, show actionable errors, and block double submits.
+- **Bug found by behavioural testing and fixed:** Supabase emits `INITIAL_SESSION` with a
+  null session on subscribe; the old handler read that as a sign-out, cancelling the
+  in-flight activation and bouncing the user to the chooser after every reload.
+
+### PR2 — truthful deletion and independent verification
+- Migration `0003` adds `delete_my_data()`: transactional, `SECURITY DEFINER`, hard-scoped
+  to `auth.uid()`, returns per-table counts and re-checks that zero rows remain before
+  committing. It clears `referral_events` and `ai_usage` (which have no user DELETE
+  policy) **without** broadening ordinary user access.
+- The server action requires a **recent sign-in**, inspects the RPC error, validates the
+  routine's receipt, and independently re-reads the bundle. Any failure throws — a partial
+  delete can never render as success.
+- Contract is now labelled accurately: it deletes **data**, not the auth identity; the
+  sign-in is retained and the UI says so. Demo reset is separate.
+- Reauthentication promise honoured for deletion; export copy corrected (needs none). The
+  unevidenced "backups purged within 30 days" claim was removed — backup retention must be
+  read from the hosting project's actual configuration.
+- Self-asserted verification (`completed_verified`, formation `verified`) is rejected in
+  RLS `WITH CHECK` **and** by new Zod schemas at the server actions, closing the direct
+  database-API path. `service_role` still bypasses for a future trusted workflow.
+
+### PR3 — executable pilot evidence
+- `supabase/tests/rls_cross_user.sql` rewritten: catches only the expected SQLSTATE with
+  the unexpected-success assertion **outside** the handler (the old
+  `when others then null` swallowed its own `FAIL`, making the assertion vacuous). Extends
+  to **all 10 private tables** across read / update / delete / insert-on-behalf /
+  owner-reassignment, plus export-path visibility.
+- `meta_detects_broken_policy.sql` deliberately loosens a policy and asserts the suite
+  goes red — evidence the assertions have teeth.
+- `scripts/db-test.sh` runs everything with `ON_ERROR_STOP=1` against a disposable
+  database and **refuses** to run destructive fixtures against a hosted project.
+- `.github/workflows/ci.yml`: install from lockfile, typecheck, lint, unit tests, build,
+  and the database suite against a disposable `postgres:16` service container.
+- `scripts/e2e-real-mode.mjs`: real-mode browser journey (sign in → onboarding → snapshot →
+  action completion → reload → export → verified deletion). It refuses to target the
+  production project and reports **NOT RUN** when a disposable Supabase project is absent,
+  rather than reporting a pass it did not earn.
+
+### What was actually executed (2026-09-12)
+| Gate | Result |
+| --- | --- |
+| `npm run typecheck` | pass |
+| `npm run lint` | pass |
+| `npm run test` (Vitest) | **96 pass** (+14 new: SessionGuard 7, runtime schemas 7) |
+| `npm run build` | pass (14 routes) |
+| `npm run test:db` (disposable Postgres 16) | **10 assertions pass**, incl. meta-test |
+| Migrations 0001+0002+0003 applied to a scratch DB | pass (0003 executed for the first time) |
+| Browser pass — demo chooser / opt-in / seed / complete / reload | pass (scripted) |
+| `npm run test:e2e` real-mode journey | **NOT RUN** — no disposable Supabase project |
+
+### Remaining limits (explicitly not claimed)
+- The real-mode browser journey has **not** been executed; it needs a disposable Supabase
+  project with credentials in CI secrets.
+- The database suite runs against local Postgres with a **shim** for `auth.users` /
+  `auth.uid()` (`supabase/tests/harness/`). It approximates Supabase/GoTrue and is not a
+  substitute for running against a real instance.
+- Migration `0003` has **not** been applied to the live pilot project — the sprint brief
+  forbids modifying production. Deployment order below.
+- Recent-reauth uses `last_sign_in_at` within a 10-minute window; it is not a WebAuthn-grade
+  re-assertion.
+- Engine completion semantics (finding 6) are **unchanged** — that is the next product
+  increment, deliberately out of this reliability sprint.
+
+### Deployment / migration order
+1. Apply `supabase/migrations/0003_deletion_and_verification.sql` to the target project
+   **before** deploying this app revision — the deletion action calls `delete_my_data()`
+   and will fail until the routine exists.
+2. Deploy the app.
+3. Optionally add `E2E_*` CI secrets pointing at a **disposable** project to activate the
+   real-mode journey gate.
 
 ## Commercialization compliance review
 
