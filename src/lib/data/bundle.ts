@@ -6,6 +6,7 @@ import type {
   Profile,
   WeeklyReview,
 } from "../domain/types";
+import type { FormationItemStatus } from "../domain/formation";
 
 /**
  * The complete set of one user's private records. This is the unit of export,
@@ -20,6 +21,8 @@ export interface UserDataBundle {
   creditIssues: CreditIssue[];
   actionEvents: ActionEvent[];
   weeklyReviews: WeeklyReview[];
+  /** User-reported status per formation checklist item id. */
+  formationStatuses: Record<string, FormationItemStatus>;
 }
 
 export function emptyBundle(ownerId: string): UserDataBundle {
@@ -31,6 +34,7 @@ export function emptyBundle(ownerId: string): UserDataBundle {
     creditIssues: [],
     actionEvents: [],
     weeklyReviews: [],
+    formationStatuses: {},
   };
 }
 
