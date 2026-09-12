@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AppStateProvider, useApp } from "@/lib/store/provider";
+import { SessionGate } from "@/components/SessionGate";
 import { cn } from "@/components/ui";
 
 const NAV = [
@@ -14,13 +15,14 @@ const NAV = [
 ];
 
 function DemoBanner() {
-  const { mode, hasData } = useApp();
-  if (mode !== "demo") return null;
+  const { sessionState } = useApp();
+  if (sessionState !== "demo") return null;
   return (
-    <div className="border-b border-teal/30 bg-teal/10 px-4 py-1.5 text-center text-xs text-teal">
-      Synthetic demo — {hasData ? "data is illustrative and not real" : "no data yet"}.{" "}
-      <Link href="/settings" className="underline">
-        Manage in Settings
+    <div className="border-b border-warn/40 bg-warn/10 px-4 py-1.5 text-center text-xs text-warn">
+      <strong>Synthetic demo</strong> — example data only, saved in this browser. Don&apos;t enter real
+      figures.{" "}
+      <Link href="/signin" className="underline">
+        Sign in to use your own
       </Link>
     </div>
   );
@@ -71,7 +73,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
         </header>
         <DemoBanner />
-        <main className="flex-1 px-4 py-4 pb-6">{children}</main>
+        <main className="flex-1 px-4 py-4 pb-6">
+          <SessionGate>{children}</SessionGate>
+        </main>
         <BottomNav />
       </div>
     </AppStateProvider>

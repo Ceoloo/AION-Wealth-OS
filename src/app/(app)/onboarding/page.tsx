@@ -35,6 +35,9 @@ export default function OnboardingPage() {
     weeklyTimeMinutes: p?.weeklyTimeMinutes ?? null,
   });
 
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   function set<K extends keyof ProfileInput>(k: K, v: ProfileInput[K]) {
     setForm((f) => ({ ...f, [k]: v }));
   }
@@ -106,13 +109,25 @@ export default function OnboardingPage() {
       </Card>
 
       <Button
-        onClick={() => {
-          saveProfile(form);
-          router.push("/finances");
+        disabled={saving}
+        onClick={async () => {
+          setSaving(true);
+          setSaveError(null);
+          const res = await saveProfile(form);
+          setSaving(false);
+          // Only navigate once the save is actually confirmed. On failure the
+          // form keeps everything the user typed.
+          if (res.ok) router.push("/finances");
+          else setSaveError(res.error);
         }}
       >
-        Save & add my finances →
+        {saving ? "Saving…" : "Save & add my finances →"}
       </Button>
+      {saveError ? (
+        <p className="text-sm text-danger" role="alert">
+          {saveError} Your answers are still here — try again.
+        </p>
+      ) : null}
 
       <Disclaimer>
         We never ask for bank logins, SSNs, full account numbers, identity documents, or credit-report

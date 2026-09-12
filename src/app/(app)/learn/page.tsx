@@ -51,6 +51,8 @@ export default function LearnPage() {
   const { ready, bundle, createCreditIssue, editCreditIssue } = useApp();
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState<CreditIssueInput>(EMPTY_ISSUE);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   if (!ready) return <p className="text-sm text-cloud-faint">Loading…</p>;
 
   function set<K extends keyof CreditIssueInput>(k: K, v: CreditIssueInput[K]) {
@@ -130,7 +132,14 @@ export default function LearnPage() {
               <Field label="">
                 <Select
                   value={c.state}
-                  onChange={(e) => editCreditIssue(c.id, { ...toInput(c), state: e.target.value as CreditIssueInput["state"] })}
+                  onChange={async (e) => {
+                    setSaveError(null);
+                    const res = await editCreditIssue(c.id, {
+                      ...toInput(c),
+                      state: e.target.value as CreditIssueInput["state"],
+                    });
+                    if (!res.ok) setSaveError(res.error);
+                  }}
                 >
                   <option value="draft">Draft</option>
                   <option value="user_submitted">I submitted a dispute</option>
@@ -188,12 +197,19 @@ export default function LearnPage() {
             </div>
             <div className="mt-3 flex gap-2">
               <Button
-                disabled={!form.creditorNickname.trim() || !form.explanation.trim()}
-                onClick={() => { createCreditIssue(form); setAdding(false); }}
+                disabled={!form.creditorNickname.trim() || !form.explanation.trim() || saving}
+                onClick={async () => {
+                  setSaving(true);
+                  setSaveError(null);
+                  const res = await createCreditIssue(form);
+                  setSaving(false);
+                  if (res.ok) setAdding(false);
+                  else setSaveError(res.error);
+                }}
               >
-                Save issue
+                {saving ? "Saving…" : "Save issue"}
               </Button>
-              <Button variant="ghost" onClick={() => setAdding(false)}>Cancel</Button>
+              <Button variant="ghost" onClick={() => setAdding(false)} disabled={saving}>Cancel</Button>
             </div>
           </Card>
         )}
@@ -213,6 +229,12 @@ export default function LearnPage() {
           </Button>
         ) : null}
       </div>
+
+      {saveError ? (
+        <p className="text-sm text-danger" role="alert">
+          {saveError} Nothing was saved.
+        </p>
+      ) : null}
 
       <Disclaimer>
         AION does not remove accurate information, generate dispute letters, or contact bureaus in

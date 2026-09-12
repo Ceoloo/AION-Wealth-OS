@@ -30,17 +30,25 @@ export default function TodayPage() {
           title="No data yet"
           body={
             mode === "demo"
-              ? "Load a clearly-labeled synthetic founder to explore the full loop, or start fresh onboarding to enter your own numbers."
+              ? "Load a clearly-labeled synthetic founder to explore the full loop. This is example data — to work with your own figures, sign in."
               : "Start onboarding to enter your own information. It's stored securely to your account."
           }
           action={
             <div className="flex flex-col gap-2">
-              {mode === "demo" ? <Button onClick={loadDemoSeed}>Load synthetic demo</Button> : null}
-              <Link href="/onboarding">
-                <Button variant={mode === "demo" ? "secondary" : "primary"} className="w-full">
-                  Start {mode === "demo" ? "fresh " : ""}onboarding
-                </Button>
-              </Link>
+              {mode === "demo" ? (
+                <>
+                  <Button onClick={loadDemoSeed}>Load synthetic demo</Button>
+                  <Link href="/signin">
+                    <Button variant="secondary" className="w-full">
+                      Sign in to use my own numbers
+                    </Button>
+                  </Link>
+                </>
+              ) : (
+                <Link href="/onboarding">
+                  <Button className="w-full">Start onboarding</Button>
+                </Link>
+              )}
             </div>
           }
         />

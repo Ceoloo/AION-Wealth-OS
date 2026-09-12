@@ -25,6 +25,7 @@ const STATUS_LABEL: Record<FormationItemStatus, string> = {
 export default function BusinessPage() {
   const { ready, bundle, plan, saveProfile, setFormationStatus } = useApp();
   const [stateOverride, setStateOverride] = useState<USState | "">("");
+  const [saveError, setSaveError] = useState<string | null>(null);
   if (!ready) return <p className="text-sm text-cloud-faint">Loading…</p>;
 
   const chosenState = (stateOverride || bundle.profile?.businessState || null) as USState | null;
@@ -46,17 +47,19 @@ export default function BusinessPage() {
         <Field label="Operating state" hint="We maintain a verified checklist for New York in v0.1.">
           <Select
             value={chosenState ?? ""}
-            onChange={(e) => {
+            onChange={async (e) => {
               const v = e.target.value as USState | "";
               setStateOverride(v);
+              setSaveError(null);
               if (v && bundle.profile) {
-                saveProfile({
+                const res = await saveProfile({
                   residenceState: bundle.profile.residenceState,
                   businessState: v,
                   goals: Array.from(new Set([...(bundle.profile.goals ?? []), "form_business"])),
                   experience: bundle.profile.experience,
                   weeklyTimeMinutes: bundle.profile.weeklyTimeMinutes,
                 });
+                if (!res.ok) setSaveError(res.error);
               }
             }}
           >
@@ -68,6 +71,11 @@ export default function BusinessPage() {
             ))}
           </Select>
         </Field>
+        {saveError ? (
+          <p className="mt-2 text-sm text-danger" role="alert">
+            {saveError} Your operating state wasn&apos;t saved.
+          </p>
+        ) : null}
       </Card>
 
       {negativeSurplus ? (
