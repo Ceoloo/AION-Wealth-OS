@@ -1,30 +1,12 @@
 "use client";
 
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { UserDataBundle } from "../data/bundle";
 import { emptyBundle } from "../data/bundle";
 import { buildDemoBundle, DEMO_OWNER_ID } from "./demoData";
 import { generatePlan } from "../domain/plan/engine";
 import type { GeneratedPlan } from "../domain/types";
 import { nowISO, todayISO } from "../today";
-import type { Ctx } from "./mutations";
-import {
-  acknowledgePartners,
-  addCreditIssue,
-  addSnapshot,
-  addWeeklyReview,
-  recordActionEvent,
-  recordReferralEvent,
-  removeAccount,
-  setFormationStatus,
-  setPartnerStatus,
-  setProfile,
-  updateCreditIssue,
-  upsertAccount,
-} from "./mutations";
-import type { FormationItemStatus } from "../domain/formation";
-import type { PartnerStatus } from "../domain/partners";
-import { PARTNERS } from "../domain/partners";
 import type {
   AccountInput,
   CreditIssueInput,
@@ -33,21 +15,31 @@ import type {
   WeeklyReviewInput,
 } from "../validation/schemas";
 import type { ActionEventType, SelfReportedScore } from "../domain/types";
+import type { FormationItemStatus } from "../domain/formation";
+import type { PartnerStatus } from "../domain/partners";
+import type { Repository } from "../repo/types";
+import { DemoRepository, DEMO_KEY } from "../repo/demo";
+import { SupabaseRepository } from "../repo/supabase";
+import { createSupabaseBrowserClient } from "../supabase/client";
 
-const DEMO_KEY = "aion.demo.v1";
-
-type Mode = "demo";
+export type Mode = "demo" | "real";
 
 interface AppState {
   ready: boolean;
   mode: Mode;
+  userEmail: string | null;
+  busy: boolean;
+  error: string | null;
   bundle: UserDataBundle;
   plan: GeneratedPlan;
   hasData: boolean;
-  // actions
+  // demo-only entry helpers
   loadDemoSeed: () => void;
   startFresh: () => void;
   resetAll: () => void;
+  // auth
+  signOut: () => void;
+  // data actions
   saveProfile: (input: ProfileInput) => void;
   saveSnapshot: (input: SnapshotInput, score?: SelfReportedScore | null) => void;
   saveAccount: (input: AccountInput, existingId?: string) => void;
@@ -59,70 +51,93 @@ interface AppState {
   setFormationStatus: (itemId: string, status: FormationItemStatus) => void;
   setPartnerStatus: (partnerId: string, status: PartnerStatus) => void;
   acknowledgePartners: () => void;
-  /** Record a referral link click (tracking event) and mark the app as clicked. */
   recordReferralClick: (partnerId: string) => void;
-  /** User self-reports they signed up (tracking event) and mark as signed up. */
   reportPartnerSignup: (partnerId: string) => void;
 }
 
 const AppContext = createContext<AppState | null>(null);
 
-function makeCtx(ownerId: string): Ctx {
-  return {
-    ownerId,
-    id: () =>
-      typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : `id-${Math.random().toString(36).slice(2)}-${Date.now()}`,
-    now: () => nowISO(),
-  };
-}
-
-function loadDemo(): UserDataBundle | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(DEMO_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<UserDataBundle>;
-    // Normalize older persisted shapes so new fields never come back undefined.
-    return {
-      ...emptyBundle(parsed.ownerId ?? DEMO_OWNER_ID),
-      ...parsed,
-      formationStatuses: parsed.formationStatuses ?? {},
-      partnerStatuses: parsed.partnerStatuses ?? {},
-      partnersAcknowledged: parsed.partnersAcknowledged ?? false,
-      referralEvents: parsed.referralEvents ?? [],
-    } as UserDataBundle;
-  } catch {
-    return null;
-  }
-}
-
-function persistDemo(bundle: UserDataBundle) {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(DEMO_KEY, JSON.stringify(bundle));
-  } catch {
-    // Storage may be unavailable (private mode); the app still functions in-memory.
-  }
-}
-
 export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
+  const [mode, setMode] = useState<Mode>("demo");
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [bundle, setBundle] = useState<UserDataBundle>(() => emptyBundle(DEMO_OWNER_ID));
 
+  // The active repository. A ref so async callbacks always see the latest.
+  const repoRef = useRef<Repository>(new DemoRepository());
+  const bundleRef = useRef(bundle);
+  bundleRef.current = bundle;
+
+  const activateDemo = useCallback(async () => {
+    const repo = new DemoRepository();
+    repoRef.current = repo;
+    setMode("demo");
+    setUserEmail(null);
+    setBundle(await repo.load());
+  }, []);
+
+  const activateReal = useCallback(async (email: string | null) => {
+    const repo = new SupabaseRepository();
+    repoRef.current = repo;
+    setMode("real");
+    setUserEmail(email);
+    setBundle(await repo.load());
+  }, []);
+
+  // Determine mode on mount, and react to auth changes.
   useEffect(() => {
-    const saved = loadDemo();
-    if (saved) setBundle(saved);
-    setReady(true);
-  }, []);
+    let cancelled = false;
+    const supabase = createSupabaseBrowserClient();
 
-  const commit = useCallback((next: UserDataBundle) => {
-    setBundle(next);
-    persistDemo(next);
-  }, []);
+    (async () => {
+      try {
+        if (supabase) {
+          const { data } = await supabase.auth.getUser();
+          if (!cancelled && data.user) {
+            await activateReal(data.user.email ?? null);
+          } else if (!cancelled) {
+            await activateDemo();
+          }
+        } else if (!cancelled) {
+          await activateDemo();
+        }
+      } catch {
+        if (!cancelled) await activateDemo();
+      } finally {
+        if (!cancelled) setReady(true);
+      }
+    })();
 
-  const ctx = useMemo(() => makeCtx(DEMO_OWNER_ID), []);
+    const sub = supabase?.auth.onAuthStateChange((_event, session) => {
+      if (cancelled) return;
+      if (session?.user) void activateReal(session.user.email ?? null);
+      else void activateDemo();
+    });
+
+    return () => {
+      cancelled = true;
+      sub?.data.subscription.unsubscribe();
+    };
+  }, [activateDemo, activateReal]);
+
+  // Run a mutating repo call: set busy, apply result, surface errors.
+  const run = useCallback((fn: (repo: Repository, b: UserDataBundle) => Promise<UserDataBundle>) => {
+    setBusy(true);
+    setError(null);
+    void (async () => {
+      try {
+        const next = await fn(repoRef.current, bundleRef.current);
+        setBundle(next);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Something went wrong";
+        setError(msg === "AUTH_REQUIRED" ? "Please sign in again." : msg);
+      } finally {
+        setBusy(false);
+      }
+    })();
+  }, []);
 
   const plan = useMemo<GeneratedPlan>(
     () =>
@@ -140,44 +155,60 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
   const value: AppState = {
     ready,
-    mode: "demo",
+    mode,
+    userEmail,
+    busy,
+    error,
     bundle,
     plan,
     hasData: bundle.profile !== null || bundle.snapshots.length > 0,
-    loadDemoSeed: () => commit(buildDemoBundle()),
-    startFresh: () => commit(emptyBundle(DEMO_OWNER_ID)),
-    resetAll: () => {
-      if (typeof window !== "undefined") window.localStorage.removeItem(DEMO_KEY);
-      setBundle(emptyBundle(DEMO_OWNER_ID));
-    },
-    saveProfile: (input) => commit(setProfile(bundle, input, ctx)),
-    saveSnapshot: (input, score = null) => commit(addSnapshot(bundle, input, ctx, score)),
-    saveAccount: (input, existingId) => commit(upsertAccount(bundle, input, ctx, existingId)),
-    deleteAccount: (id) => commit(removeAccount(bundle, id, ctx)),
-    createCreditIssue: (input) => commit(addCreditIssue(bundle, input, ctx)),
-    editCreditIssue: (id, input) => commit(updateCreditIssue(bundle, id, input, ctx)),
-    actionEvent: (args) => commit(recordActionEvent(bundle, args, ctx)),
-    saveWeeklyReview: (input) => commit(addWeeklyReview(bundle, input, ctx)),
-    setFormationStatus: (itemId, status) => commit(setFormationStatus(bundle, itemId, status)),
-    setPartnerStatus: (partnerId, status) => commit(setPartnerStatus(bundle, partnerId, status)),
-    acknowledgePartners: () => commit(acknowledgePartners(bundle)),
-    recordReferralClick: (partnerId) => {
-      const category = PARTNERS.find((p) => p.id === partnerId)?.category ?? "banking";
-      let next = recordReferralEvent(bundle, { partnerId, category, type: "click" }, ctx);
-      // A click is not a signup — only advance status if it wouldn't downgrade a
-      // stronger self-reported state.
-      const cur = bundle.partnerStatuses[partnerId];
-      if (cur !== "signed_up" && cur !== "already_use") {
-        next = setPartnerStatus(next, partnerId, "clicked");
+
+    loadDemoSeed: () => {
+      if (repoRef.current.mode !== "demo") return;
+      const seeded = buildDemoBundle();
+      try {
+        if (typeof window !== "undefined") window.localStorage.setItem(DEMO_KEY, JSON.stringify(seeded));
+      } catch {
+        /* ignore */
       }
-      commit(next);
+      setBundle(seeded);
     },
-    reportPartnerSignup: (partnerId) => {
-      const category = PARTNERS.find((p) => p.id === partnerId)?.category ?? "banking";
-      let next = recordReferralEvent(bundle, { partnerId, category, type: "signup_reported" }, ctx);
-      next = setPartnerStatus(next, partnerId, "signed_up");
-      commit(next);
+    startFresh: () => {
+      if (repoRef.current.mode !== "demo") return;
+      const fresh = emptyBundle(DEMO_OWNER_ID);
+      try {
+        if (typeof window !== "undefined") window.localStorage.setItem(DEMO_KEY, JSON.stringify(fresh));
+      } catch {
+        /* ignore */
+      }
+      setBundle(fresh);
     },
+    resetAll: () => run((repo, b) => repo.deleteAll(b)),
+
+    signOut: () => {
+      const supabase = createSupabaseBrowserClient();
+      void (async () => {
+        try {
+          await supabase?.auth.signOut();
+        } finally {
+          await activateDemo();
+        }
+      })();
+    },
+
+    saveProfile: (input) => run((repo, b) => repo.saveProfile(b, input)),
+    saveSnapshot: (input, score = null) => run((repo, b) => repo.addSnapshot(b, input, score)),
+    saveAccount: (input, existingId) => run((repo, b) => repo.upsertAccount(b, input, existingId)),
+    deleteAccount: (id) => run((repo, b) => repo.removeAccount(b, id)),
+    createCreditIssue: (input) => run((repo, b) => repo.addCreditIssue(b, input)),
+    editCreditIssue: (id, input) => run((repo, b) => repo.updateCreditIssue(b, id, input)),
+    actionEvent: (args) => run((repo, b) => repo.recordActionEvent(b, args)),
+    saveWeeklyReview: (input) => run((repo, b) => repo.addWeeklyReview(b, input)),
+    setFormationStatus: (itemId, status) => run((repo, b) => repo.setFormationStatus(b, itemId, status)),
+    setPartnerStatus: (partnerId, status) => run((repo, b) => repo.setPartnerStatus(b, partnerId, status)),
+    acknowledgePartners: () => run((repo, b) => repo.acknowledgePartners(b)),
+    recordReferralClick: (partnerId) => run((repo, b) => repo.recordReferralClick(b, partnerId)),
+    reportPartnerSignup: (partnerId) => run((repo, b) => repo.reportPartnerSignup(b, partnerId)),
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

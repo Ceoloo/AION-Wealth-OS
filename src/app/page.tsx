@@ -34,10 +34,18 @@ export default function LandingPage() {
       <div className="rounded-2xl border border-ink-line bg-ink-soft p-4">
         <p className="text-sm font-semibold text-cloud">Real user mode</p>
         {supabaseReady ? (
-          <p className="mt-1 text-sm text-cloud-muted">
-            Authenticated persistence is configured. Real financial information is stored securely
-            server-side with row-level security — never silently in your browser.
-          </p>
+          <>
+            <p className="mt-1 text-sm text-cloud-muted">
+              Authenticated persistence is configured. Real financial information is stored securely
+              server-side with row-level security — never silently in your browser.
+            </p>
+            <Link
+              href="/signin"
+              className="mt-3 inline-flex min-h-[44px] items-center justify-center rounded-xl border border-ink-line bg-navy-muted px-5 py-2 text-sm font-semibold text-cloud transition hover:bg-navy"
+            >
+              Sign in / create account →
+            </Link>
+          </>
         ) : (
           <p className="mt-1 text-sm text-cloud-muted">
             Not configured yet. Real user mode requires Supabase Auth + Postgres. See{" "}

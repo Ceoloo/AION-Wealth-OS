@@ -9,7 +9,7 @@ import { downloadText } from "@/lib/download";
 import { nowISO, todayISO } from "@/lib/today";
 
 export default function SettingsPage() {
-  const { ready, bundle, resetAll } = useApp();
+  const { ready, bundle, resetAll, mode, userEmail, signOut, busy, error } = useApp();
   const [confirmDelete, setConfirmDelete] = useState(false);
   if (!ready) return <p className="text-sm text-cloud-faint">Loading…</p>;
 
@@ -24,6 +24,35 @@ export default function SettingsPage() {
       <div>
         <h1 className="text-xl font-bold text-cloud">Settings</h1>
         <p className="text-sm text-cloud-muted">Profile, export, consent, and account.</p>
+      </div>
+
+      <div>
+        <SectionTitle title="Account" />
+        <Card>
+          {mode === "real" ? (
+            <>
+              <p className="text-sm text-cloud">
+                Signed in{userEmail ? ` as ${userEmail}` : ""} — data is stored securely server-side
+                with row-level security.
+              </p>
+              <Button variant="secondary" className="mt-3" onClick={signOut}>
+                Sign out
+              </Button>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-cloud-muted">
+                You&apos;re in the synthetic demo (this browser only). Sign in to use real user mode
+                with secure server-side storage.
+              </p>
+              <Link href="/signin" className="mt-2 inline-block text-sm text-teal underline">
+                Sign in / create account →
+              </Link>
+            </>
+          )}
+          {busy ? <p className="mt-2 text-xs text-cloud-faint">Saving…</p> : null}
+          {error ? <p className="mt-2 text-xs text-danger">{error}</p> : null}
+        </Card>
       </div>
 
       <div>

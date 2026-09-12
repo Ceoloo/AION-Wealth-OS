@@ -9,7 +9,7 @@ import { todayISO } from "@/lib/today";
 import { Partners } from "@/components/Partners";
 
 export default function TodayPage() {
-  const { ready, hasData, bundle, plan, loadDemoSeed } = useApp();
+  const { ready, hasData, bundle, plan, loadDemoSeed, mode } = useApp();
 
   if (!ready) return <p className="text-sm text-cloud-faint">Loading…</p>;
 
@@ -28,13 +28,17 @@ export default function TodayPage() {
         />
         <EmptyState
           title="No data yet"
-          body="Load a clearly-labeled synthetic founder to explore the full loop, or start fresh onboarding to enter your own numbers."
+          body={
+            mode === "demo"
+              ? "Load a clearly-labeled synthetic founder to explore the full loop, or start fresh onboarding to enter your own numbers."
+              : "Start onboarding to enter your own information. It's stored securely to your account."
+          }
           action={
             <div className="flex flex-col gap-2">
-              <Button onClick={loadDemoSeed}>Load synthetic demo</Button>
+              {mode === "demo" ? <Button onClick={loadDemoSeed}>Load synthetic demo</Button> : null}
               <Link href="/onboarding">
-                <Button variant="secondary" className="w-full">
-                  Start fresh onboarding
+                <Button variant={mode === "demo" ? "secondary" : "primary"} className="w-full">
+                  Start {mode === "demo" ? "fresh " : ""}onboarding
                 </Button>
               </Link>
             </div>

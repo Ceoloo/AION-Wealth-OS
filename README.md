@@ -108,6 +108,7 @@ the browser with clearly-labeled fake data — no credentials required.
    supabase db reset            # applies supabase/migrations + supabase/seed.sql
    # or apply manually:
    psql "$DATABASE_URL" -f supabase/migrations/0001_init.sql
+   psql "$DATABASE_URL" -f supabase/migrations/0002_realmode.sql
    psql "$DATABASE_URL" -f supabase/seed.sql
    ```
 
@@ -116,6 +117,10 @@ the browser with clearly-labeled fake data — no credentials required.
    ```bash
    psql "$DATABASE_URL" -f supabase/tests/rls_cross_user.sql   # prints PASS
    ```
+
+5. Sign in at `/signin` (email + password, or a magic link). Once authenticated, the app
+   switches to **real user mode**: all reads/writes go through authenticated,
+   RLS-enforced server actions and persist to Postgres. Sign out returns you to the demo.
 
 Every private table has `owner_id` and row-level security scoped to `auth.uid()`.
 Shared reviewed content (`content_sources`) is readable by authenticated users and

@@ -111,13 +111,42 @@ stable). Enforced in `src/lib/domain/partners.ts`, tested in `partners.test.ts` 
 Note: this intentionally reverses the original spec's "omit affiliate offers" line at the
 owner's direction; the honesty/guardrail constraints were preserved.
 
+## Real user mode (Supabase CRUD) — wired
+
+The app now runs against Supabase when configured and the user is signed in; otherwise it
+falls back to the synthetic demo (no fake sign-in).
+
+- **Repository abstraction** (`src/lib/repo/`): `Repository` interface with `DemoRepository`
+  (localStorage + pure `mutations`) and `SupabaseRepository` (server actions). The provider
+  picks one at runtime from auth state and exposes the *same* `useApp()` API, so no page
+  changed.
+- **Server actions** (`src/lib/supabase/actions.ts`, `"use server"`): every write resolves
+  the authenticated user (or throws `AUTH_REQUIRED`), validates with the shared Zod schemas,
+  stamps `owner_id`, writes as the user (RLS applies — service role never used), and returns
+  a freshly-loaded bundle. Covers profile, snapshots, accounts, credit issues, action
+  events, weekly reviews, formation + partner statuses, referral events, and authenticated
+  deletion (cascades from `profiles`).
+- **Loader** (`src/lib/supabase/data.ts`): assembles a `UserDataBundle` from all tables,
+  filtering by `owner_id` explicitly as defense-in-depth on top of RLS.
+- **Mappers** (`src/lib/supabase/mappers.ts`): pure snake↔camel row mapping, unit-tested
+  (6 tests), preserving `null` as unknown.
+- **Auth**: `/signin` (email+password or magic link) with a setup state when unconfigured;
+  `middleware.ts` refreshes the session cookie (no-op without config). Settings shows
+  signed-in status and sign-out.
+- **Migrations**: `0001_init.sql` + `0002_realmode.sql` (adds `partner_statuses` and
+  `profiles.partners_acknowledged`).
+
+Verified: typecheck, lint, and build pass (14 routes + middleware); 82 tests pass; demo
+mode smoke-tested with Supabase unconfigured. Not verified here: live CRUD against a real
+project (no Supabase available in this environment).
+
 ## Known limitations / blockers
 
 - **RLS test is not run in CI here** (no live Postgres in this environment). The script is
   provided and self-checks with `PASS`; run it against a local Supabase stack.
-- **Real-mode read/write wiring** to Supabase is scaffolded (clients + schema + RLS) but
-  the interactive app currently drives the **demo** repository. Wiring authenticated CRUD
-  to the existing pure `mutations` is a contained next step (see backlog).
+- **Real-mode CRUD is now wired** (see below). It is build/typecheck-verified; full runtime
+  verification requires a live Supabase project, which this environment doesn't have. Run
+  the migrations + `supabase/tests/rls_cross_user.sql` against a project to confirm.
 - **AI provider call is intentionally not enabled** (no paid services). The adapter,
   minimization, and guardrails are complete and tested; only the provider HTTP call is
   stubbed with an honest "disabled" response.
@@ -125,9 +154,11 @@ owner's direction; the honesty/guardrail constraints were preserved.
 
 ## Bounded backlog (NOT implemented — deliberately deferred)
 
-- Wire real-mode CRUD: a `SupabaseRepository` mapping `mutations` to tables; auth pages;
-  middleware session refresh; server actions with `assertOwner`.
+- Run the real-mode CRUD path against a live Supabase project end-to-end and add
+  integration tests (the code is wired; only live verification remains).
 - CI workflow running typecheck + tests + the RLS SQL against an ephemeral Postgres.
+- Optimistic UI updates in real mode (currently each write reloads the bundle) and a
+  `/r/:partnerId` server redirect for airtight referral-click attribution.
 - Live AI provider adapter (server route + `ai_usage` writes) behind the existing guards.
 - Additional maintained state checklists beyond NY, each with verified sources + expiry.
 - Reminders/notifications for follow-up dates (credit issues, biennial statement).
