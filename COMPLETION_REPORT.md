@@ -324,6 +324,47 @@ and reports NOT RUN rather than passing when the secrets are absent (verified).
 3. Optionally add `E2E_*` CI secrets pointing at a **disposable** project to activate the
    real-mode journey gate.
 
+## Post-merge production reconciliation (2026-09-13)
+
+The sprint branch was merged to `main` (`89e11c6`) and auto-deployed, but the
+migrations had not been applied to the live project. That left **post-sprint code
+running against a pre-sprint schema**, which broke two real-mode features:
+
+- recording an action event (done / started / skipped / deferred / reopened) —
+  the insert carries `occurrence_key`, which did not exist; and
+- "Delete my data" — it calls `delete_my_data()`, which did not exist.
+
+Both failed loudly (error surfaced, user input retained, deletion failing closed
+rather than reporting false success), and the synthetic demo was unaffected — but
+the features were down, and the project already had a real profile row, so this
+was live rather than hypothetical.
+
+Resolved by applying migrations `0003` and `0004` to the live project on
+2026-09-13 with explicit owner approval. Both are purely additive DDL — a
+function, an index, a nullable column and three tightened RLS policies — and
+touched no rows; the existing profile row was verified intact afterwards.
+
+Verified on production after applying: `delete_my_data()` present and executable
+by `authenticated` but **not** by `anon`; `action_events.occurrence_key` present;
+`ae_insert` rejects `completed_verified`; `fc_insert`/`fc_update` reject
+`verified`.
+
+**Operational rule going forward:** apply migrations *before* merging/deploying
+the code that depends on them. The deployment order is stated at the end of the
+reliability-sprint section.
+
+### Re-review note
+
+A repeat of the September 12 review was received on 2026-09-13 citing baseline
+`0ccd83e`. That baseline is superseded — it is now an ancestor of `main`, and all
+six findings were fixed in PR1–PR4. Re-validating each finding against current
+HEAD confirmed they are fixed. The re-review did surface one genuine residual
+defect of its own class: `supabase/tests/deletion_contract.sql` still used
+`when others` handlers, which could let an unrelated error pass as though the
+guard under test had worked. Both now catch only the expected SQLSTATE (28000 for
+AUTH_REQUIRED, 42501 for anon), and the suite still reports 10 passing assertions
+— confirming it was passing for the right reason.
+
 ## Commercialization compliance review
 
 A full commercialization-gate review — credit-repair (CROA + state CSO), the referral/
