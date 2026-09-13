@@ -41,6 +41,7 @@ export function buildExport(bundle: UserDataBundle, asOf: string, generatedAt: s
     generatedAt,
     profile: bundle.profile,
     snapshot,
+    snapshots: bundle.snapshots,
     accounts: bundle.accounts,
     creditIssues: bundle.creditIssues,
     events: bundle.actionEvents,

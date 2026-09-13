@@ -230,7 +230,14 @@ export function updateCreditIssue(
  */
 export function recordActionEvent(
   bundle: UserDataBundle,
-  args: { actionId: string; ruleId: string; type: ActionEventType; reason?: string | null },
+  args: {
+    actionId: string;
+    ruleId: string;
+    type: ActionEventType;
+    reason?: string | null;
+    /** Which occurrence of the rule this refers to (see plan engine). */
+    occurrenceKey?: string | null;
+  },
   ctx: Ctx,
 ): UserDataBundle {
   if ((args.type === "skipped" || args.type === "deferred") && !args.reason) {
@@ -245,6 +252,7 @@ export function recordActionEvent(
     type: args.type,
     reason: args.reason ?? null,
     at: ctx.now(),
+    occurrenceKey: args.occurrenceKey ?? null,
   };
   b.actionEvents = [...b.actionEvents, event];
   return b;

@@ -30,6 +30,14 @@ export function ActionCard({ action, rank }: { action: PlanAction; rank?: number
             ) : null}
             <Badge tone="neutral">{categoryLabel(action.category)}</Badge>
             <Badge tone={statusTone(action.status)}>{statusLabel(action.status)}</Badge>
+            {action.issueState === "active" && complete ? (
+              <Badge tone="warn">Issue still open</Badge>
+            ) : null}
+            {action.priorCompletions > 0 ? (
+              <Badge tone="neutral">
+                {action.priorCompletions}× done before
+              </Badge>
+            ) : null}
           </div>
           <h3 className="mt-2 font-semibold text-cloud">{action.title}</h3>
           <p className="mt-1 text-sm text-cloud-muted">{action.why}</p>
@@ -152,6 +160,7 @@ export function ActionCard({ action, rank }: { action: PlanAction; rank?: number
                 actionId: action.actionId,
                 ruleId: action.ruleId,
                 type: "completed_user_reported",
+                occurrenceKey: action.occurrenceKey,
               })
             }
           >
@@ -161,7 +170,12 @@ export function ActionCard({ action, rank }: { action: PlanAction; rank?: number
             <Button
               variant="secondary"
               onClick={() =>
-                actionEvent({ actionId: action.actionId, ruleId: action.ruleId, type: "started" })
+                actionEvent({
+                  actionId: action.actionId,
+                  ruleId: action.ruleId,
+                  type: "started",
+                  occurrenceKey: action.occurrenceKey,
+                })
               }
             >
               Start
@@ -173,11 +187,20 @@ export function ActionCard({ action, rank }: { action: PlanAction; rank?: number
         </div>
       ) : (
         <div className="mt-3 flex items-center justify-between gap-2">
-          <span className="text-xs text-ok">Recorded as user-reported complete.</span>
+          <span className="text-xs text-ok">
+            {action.issueState === "active"
+              ? "You recorded this as done. The underlying issue is still open — it will reappear if new facts arise."
+              : "Recorded as user-reported complete."}
+          </span>
           <Button
             variant="ghost"
             onClick={() =>
-              actionEvent({ actionId: action.actionId, ruleId: action.ruleId, type: "reopened" })
+              actionEvent({
+                actionId: action.actionId,
+                ruleId: action.ruleId,
+                type: "reopened",
+                occurrenceKey: action.occurrenceKey,
+              })
             }
           >
             Reopen
@@ -206,6 +229,7 @@ export function ActionCard({ action, rank }: { action: PlanAction; rank?: number
                   ruleId: action.ruleId,
                   type: "deferred",
                   reason: reason.trim(),
+                  occurrenceKey: action.occurrenceKey,
                 });
                 setDeferring(false);
                 setReason("");
@@ -222,6 +246,7 @@ export function ActionCard({ action, rank }: { action: PlanAction; rank?: number
                   ruleId: action.ruleId,
                   type: "skipped",
                   reason: reason.trim(),
+                  occurrenceKey: action.occurrenceKey,
                 });
                 setDeferring(false);
                 setReason("");

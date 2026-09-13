@@ -99,6 +99,7 @@ export function rowToActionEvent(r: Row): ActionEvent {
     type: str(r.type) as ActionEvent["type"],
     reason: nStr(r.reason),
     at: str(r.at),
+    occurrenceKey: nStr(r.occurrence_key),
   };
 }
 

@@ -1,7 +1,9 @@
 import type {
   ActionEvent,
   ActionStatus,
+  CompletionKind,
   GeneratedPlan,
+  IssueState,
   PlanAction,
 } from "../types";
 import type { ISODate, Profile, FinancialSnapshot, Account, CreditIssue } from "../types";
@@ -13,9 +15,18 @@ export interface EngineInput {
   generatedAt: string; // ISODateTime — passed in for determinism/testability
   profile: Profile | null;
   snapshot: FinancialSnapshot | null;
+  /** Dated history (oldest first). Used to count recurring issue episodes. */
+  snapshots?: FinancialSnapshot[];
   accounts: Account[];
   creditIssues: CreditIssue[];
   events: ActionEvent[];
+}
+
+/** Legacy rows predate occurrence tracking; treat them as the default occurrence. */
+const LEGACY_OCCURRENCE = "default";
+
+function eventOccurrence(e: ActionEvent): string {
+  return e.occurrenceKey ?? LEGACY_OCCURRENCE;
 }
 
 /**
@@ -25,16 +36,36 @@ export interface EngineInput {
  * Terminal states (complete / skipped-deferred) win over the base status; a
  * later "reopened" clears them.
  */
-type Derived = { status: ActionStatus | null; deferredOrSkipped: boolean };
+type Derived = {
+  status: ActionStatus | null;
+  deferredOrSkipped: boolean;
+  completedAt: string | null;
+  completionKind: CompletionKind | null;
+};
 
-function deriveFromEvents(actionId: string, events: ActionEvent[]): Derived {
+/**
+ * Derive status from the events recorded against THIS occurrence only.
+ *
+ * The previous implementation let any completion mark the rule complete
+ * forever, so a recurring problem (a fresh past-due account, a relapse into
+ * negative surplus) stayed hidden behind an old completion. Scoping derivation
+ * to the current occurrence keeps the user's history intact while letting new
+ * adverse facts resurface the work.
+ */
+function deriveFromEvents(
+  actionId: string,
+  occurrenceKey: string,
+  events: ActionEvent[],
+): Derived {
   const relevant = events
-    .filter((e) => e.actionId === actionId)
+    .filter((e) => e.actionId === actionId && eventOccurrence(e) === occurrenceKey)
     .slice()
     .sort((a, b) => a.at.localeCompare(b.at));
 
   let status: ActionStatus | null = null;
   let deferredOrSkipped = false;
+  let completedAt: string | null = null;
+  let completionKind: CompletionKind | null = null;
 
   for (const e of relevant) {
     switch (e.type) {
@@ -42,6 +73,8 @@ function deriveFromEvents(actionId: string, events: ActionEvent[]): Derived {
       case "completed_verified":
         status = "complete";
         deferredOrSkipped = false;
+        completedAt = e.at;
+        completionKind = e.type === "completed_verified" ? "verified" : "user_reported";
         break;
       case "started":
         if (status !== "complete") status = "in_progress";
@@ -53,6 +86,8 @@ function deriveFromEvents(actionId: string, events: ActionEvent[]): Derived {
       case "reopened":
         status = "in_progress";
         deferredOrSkipped = false;
+        completedAt = null;
+        completionKind = null;
         break;
       case "generated":
       default:
@@ -60,7 +95,21 @@ function deriveFromEvents(actionId: string, events: ActionEvent[]): Derived {
     }
   }
 
-  return { status, deferredOrSkipped };
+  return { status, deferredOrSkipped, completedAt, completionKind };
+}
+
+/** Completions recorded against any OTHER occurrence of the same rule. */
+function countPriorCompletions(
+  actionId: string,
+  occurrenceKey: string,
+  events: ActionEvent[],
+): number {
+  return events.filter(
+    (e) =>
+      e.actionId === actionId &&
+      eventOccurrence(e) !== occurrenceKey &&
+      (e.type === "completed_user_reported" || e.type === "completed_verified"),
+  ).length;
 }
 
 /**
@@ -74,10 +123,17 @@ export function generatePlan(input: EngineInput): GeneratedPlan {
       ? summarize(input.snapshot, input.accounts)
       : summarize(emptySnapshot(input.asOf), input.accounts);
 
+  // Dated history, oldest first. Falls back to the single latest snapshot so
+  // existing callers keep working.
+  const snapshots = (input.snapshots ?? (input.snapshot ? [input.snapshot] : []))
+    .slice()
+    .sort((a, b) => (a.asOf === b.asOf ? a.createdAt.localeCompare(b.createdAt) : a.asOf.localeCompare(b.asOf)));
+
   const ctx: RuleContext = {
     asOf: input.asOf,
     profile: input.profile,
     snapshot: input.snapshot,
+    snapshots,
     accounts: input.accounts,
     creditIssues: input.creditIssues,
     summary,
@@ -93,18 +149,27 @@ export function generatePlan(input: EngineInput): GeneratedPlan {
   }
   for (const n of summary.doubleCount.notes) notices.push(n);
 
-  // Evaluate every rule; keep the ones that apply.
   const actions: PlanAction[] = [];
+  const applicableRuleIds = new Set<string>();
+
   for (const rule of RULES) {
     const res = rule.evaluate(ctx);
     if (!res.applies) continue;
 
     const actionId = rule.id; // singleton per rule → stable & duplicate-free
-    const derived = deriveFromEvents(actionId, input.events);
+    applicableRuleIds.add(rule.id);
+    const occurrenceKey = res.occurrenceKey ?? LEGACY_OCCURRENCE;
+    const derived = deriveFromEvents(actionId, occurrenceKey, input.events);
 
-    // Base status from the rule, then overridden by event history.
+    // Base status from the rule, then overridden by this occurrence's history.
     let status: ActionStatus = res.insufficient ? "insufficient_information" : "needs_attention";
     if (derived.status !== null) status = derived.status;
+
+    // Completion of the ACTION never implies resolution of the ISSUE. A user
+    // who contacted a creditor has done the work; the account can still be past
+    // due, and the plan says both.
+    const issueActive = res.issueActive ?? true;
+    const issueState: IssueState = issueActive ? "active" : "not_applicable";
 
     const action: PlanAction = {
       ...rule.template,
@@ -116,8 +181,12 @@ export function generatePlan(input: EngineInput): GeneratedPlan {
       why: res.why,
       supportingInputs: res.supportingInputs,
       prerequisites: res.overrides?.prerequisites ?? [],
+      occurrenceKey,
+      issueState,
+      completedAt: derived.completedAt,
+      completionKind: derived.completionKind,
+      priorCompletions: countPriorCompletions(actionId, occurrenceKey, input.events),
     };
-    // Tag deferred/skipped so ranking can exclude from priorities.
     (action as PlanAction & { _deferredOrSkipped?: boolean })._deferredOrSkipped =
       derived.deferredOrSkipped;
 
@@ -131,8 +200,6 @@ export function generatePlan(input: EngineInput): GeneratedPlan {
     .map((a, i) => ({ ...a, priorityRank: i + 1 }));
 
   // Priorities: at most 3 actions that need attention right now.
-  // Exclude completed, skipped/deferred; when surplus is negative, formation
-  // (an elective-cost action) is excluded from priorities per the guardrail.
   const priorities = thirtyDayPlan
     .filter((a) => {
       const flagged = (a as PlanAction & { _deferredOrSkipped?: boolean })._deferredOrSkipped;
@@ -144,12 +211,59 @@ export function generatePlan(input: EngineInput): GeneratedPlan {
     .slice(0, 3)
     .map((a) => stripInternal(a));
 
+  // ---------------------------------------------------------------------------
+  // Retained completions for rules that NO LONGER APPLY.
+  //
+  // Previously these simply vanished, which both lost the user's history and
+  // silently shrank the progress denominator (finishing a task could make the
+  // percentage jump for the wrong reason). We keep them, marked resolved.
+  // ---------------------------------------------------------------------------
+  const archivedCompletions: PlanAction[] = [];
+  const seenArchived = new Set<string>();
+  for (const rule of RULES) {
+    if (applicableRuleIds.has(rule.id) || seenArchived.has(rule.id)) continue;
+    const completions = input.events.filter(
+      (e) =>
+        e.actionId === rule.id &&
+        (e.type === "completed_user_reported" || e.type === "completed_verified"),
+    );
+    if (completions.length === 0) continue;
+    seenArchived.add(rule.id);
+    const last = completions.slice().sort((a, b) => a.at.localeCompare(b.at)).at(-1)!;
+    archivedCompletions.push({
+      ...rule.template,
+      ruleId: rule.id,
+      actionId: rule.id,
+      priorityRank: 0,
+      status: "complete",
+      why: "Completed earlier. This no longer applies to your current situation.",
+      supportingInputs: [],
+      prerequisites: [],
+      occurrenceKey: eventOccurrence(last),
+      issueState: "resolved",
+      completedAt: last.at,
+      completionKind: last.type === "completed_verified" ? "verified" : "user_reported",
+      priorCompletions: Math.max(0, completions.length - 1),
+    });
+  }
+
+  const completedInPlan = thirtyDayPlan.filter((a) => a.status === "complete").length;
+  const progress = {
+    completed: completedInPlan + archivedCompletions.length,
+    total: thirtyDayPlan.length + archivedCompletions.length,
+    basis:
+      "Current 30-day plan plus retained completions of steps that no longer apply. " +
+      "Steps leaving the plan stay in the denominator, so progress never rises just because a step disappeared.",
+  };
+
   return {
     engineVersion: ENGINE_VERSION,
     generatedAt: input.generatedAt,
     snapshotId: input.snapshot?.id ?? null,
     priorities,
     thirtyDayPlan: thirtyDayPlan.map((a) => stripInternal(a)),
+    archivedCompletions,
+    progress,
     notices,
   };
 }

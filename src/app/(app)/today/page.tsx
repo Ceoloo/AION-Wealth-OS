@@ -7,6 +7,7 @@ import { Button, Card, Disclaimer, EmptyState, SectionTitle } from "@/components
 import { latestSnapshot } from "@/lib/data/bundle";
 import { todayISO } from "@/lib/today";
 import { Partners } from "@/components/Partners";
+import { PLAN_BEFORE_PARTNERS } from "@/lib/experiments";
 
 export default function TodayPage() {
   const { ready, hasData, bundle, plan, loadDemoSeed, mode } = useApp();
@@ -15,7 +16,10 @@ export default function TodayPage() {
 
   // Soft gate: once the user has started, prompt the starter tools once before
   // showing the plan. They can set up, mark "already use it", or skip — then continue.
-  if (hasData && !bundle.partnersAcknowledged) {
+  // Under the PLAN_BEFORE_PARTNERS experiment the same step is shown *after* the
+  // first plan instead (see lib/experiments.ts) — the step itself, its choices and
+  // its disclosures are unchanged either way.
+  if (hasData && !bundle.partnersAcknowledged && !PLAN_BEFORE_PARTNERS) {
     return <Partners mode="gate" />;
   }
 
@@ -30,17 +34,25 @@ export default function TodayPage() {
           title="No data yet"
           body={
             mode === "demo"
-              ? "Load a clearly-labeled synthetic founder to explore the full loop, or start fresh onboarding to enter your own numbers."
+              ? "Load a clearly-labeled synthetic founder to explore the full loop. This is example data — to work with your own figures, sign in."
               : "Start onboarding to enter your own information. It's stored securely to your account."
           }
           action={
             <div className="flex flex-col gap-2">
-              {mode === "demo" ? <Button onClick={loadDemoSeed}>Load synthetic demo</Button> : null}
-              <Link href="/onboarding">
-                <Button variant={mode === "demo" ? "secondary" : "primary"} className="w-full">
-                  Start {mode === "demo" ? "fresh " : ""}onboarding
-                </Button>
-              </Link>
+              {mode === "demo" ? (
+                <>
+                  <Button onClick={loadDemoSeed}>Load synthetic demo</Button>
+                  <Link href="/signin">
+                    <Button variant="secondary" className="w-full">
+                      Sign in to use my own numbers
+                    </Button>
+                  </Link>
+                </>
+              ) : (
+                <Link href="/onboarding">
+                  <Button className="w-full">Start onboarding</Button>
+                </Link>
+              )}
             </div>
           }
         />
@@ -53,8 +65,10 @@ export default function TodayPage() {
   }
 
   const snapshot = latestSnapshot(bundle);
-  const total = plan.thirtyDayPlan.length;
-  const done = plan.thirtyDayPlan.filter((a) => a.status === "complete").length;
+  // Progress counts retained completions of steps that no longer apply, so a
+  // step leaving the plan cannot silently shrink the denominator.
+  const total = plan.progress.total;
+  const done = plan.progress.completed;
   const freshnessDays = snapshot ? daysSince(snapshot.asOf) : null;
 
   return (
@@ -80,7 +94,9 @@ export default function TodayPage() {
           )}
         </Card>
         <Card className="p-3">
-          <p className="text-xs text-cloud-faint">30-day progress</p>
+          <p className="text-xs text-cloud-faint" title={plan.progress.basis}>
+            30-day progress
+          </p>
           <p className="text-sm font-semibold text-cloud">
             {done} / {total} complete
           </p>
@@ -116,6 +132,17 @@ export default function TodayPage() {
           )}
         </div>
       </div>
+
+      {PLAN_BEFORE_PARTNERS && !bundle.partnersAcknowledged ? (
+        <Card className="border-teal/30">
+          <p className="text-sm text-cloud">
+            Starter tools: free and low-cost apps that help you act on the plan above.
+          </p>
+          <Link href="/partners" className="mt-2 inline-block text-sm font-medium text-teal underline">
+            See the starter tools →
+          </Link>
+        </Card>
+      ) : null}
 
       {snapshot && freshnessDays !== null && freshnessDays > 7 ? (
         <Card className="border-teal/30">

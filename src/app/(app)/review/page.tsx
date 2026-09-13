@@ -20,6 +20,8 @@ export default function ReviewPage() {
     nextPriorities: null,
   });
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   if (!ready) return <p className="text-sm text-cloud-faint">Loading…</p>;
 
   const baseline = baselineSnapshot(bundle);
@@ -112,8 +114,26 @@ export default function ReviewPage() {
         </Field>
 
         <div className="flex items-center gap-3">
-          <Button onClick={() => { saveWeeklyReview(form); setSaved(true); }}>Save review</Button>
+          <Button
+            disabled={saving}
+            onClick={async () => {
+              setSaving(true);
+              setSaveError(null);
+              setSaved(false);
+              const res = await saveWeeklyReview(form);
+              setSaving(false);
+              if (res.ok) setSaved(true);
+              else setSaveError(res.error);
+            }}
+          >
+            {saving ? "Saving…" : "Save review"}
+          </Button>
           {saved ? <span className="text-sm text-ok">Saved.</span> : null}
+          {saveError ? (
+            <span className="text-sm text-danger" role="alert">
+              {saveError} Nothing was saved — your notes are still here.
+            </span>
+          ) : null}
         </div>
       </Card>
 

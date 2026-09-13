@@ -24,6 +24,8 @@ export function SnapshotForm({ onSaved }: { onSaved?: () => void }) {
     hasPastDueAccounts: prev?.hasPastDueAccounts ?? null,
   }));
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   function set<K extends keyof SnapshotInput>(key: K, value: SnapshotInput[K]) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -118,15 +120,29 @@ export function SnapshotForm({ onSaved }: { onSaved?: () => void }) {
 
       <div className="mt-4 flex items-center gap-3">
         <Button
-          onClick={() => {
-            saveSnapshot(form);
-            setSaved(true);
-            onSaved?.();
+          disabled={saving}
+          onClick={async () => {
+            setSaving(true);
+            setSaveError(null);
+            setSaved(false);
+            const res = await saveSnapshot(form);
+            setSaving(false);
+            if (res.ok) {
+              setSaved(true);
+              onSaved?.();
+            } else {
+              setSaveError(res.error);
+            }
           }}
         >
-          Save snapshot
+          {saving ? "Saving…" : "Save snapshot"}
         </Button>
         {saved ? <span className="text-sm text-ok">Saved. Your plan updated.</span> : null}
+        {saveError ? (
+          <span className="text-sm text-danger" role="alert">
+            {saveError} Nothing was saved — your entries are still here.
+          </span>
+        ) : null}
       </div>
     </Card>
   );

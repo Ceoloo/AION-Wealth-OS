@@ -26,6 +26,8 @@ export function AccountManager() {
   const { bundle, saveAccount, deleteAccount } = useApp();
   const [editing, setEditing] = useState<string | "new" | null>(null);
   const [form, setForm] = useState<AccountInput>(EMPTY);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   function startNew() {
     setForm(EMPTY);
@@ -52,10 +54,15 @@ export function AccountManager() {
     setForm((f) => ({ ...f, [k]: v }));
   }
 
-  function save() {
-    if (!form.nickname.trim()) return;
-    saveAccount(form, editing === "new" ? undefined : editing ?? undefined);
-    setEditing(null);
+  async function save() {
+    if (!form.nickname.trim() || saving) return;
+    setSaving(true);
+    setSaveError(null);
+    const res = await saveAccount(form, editing === "new" ? undefined : editing ?? undefined);
+    setSaving(false);
+    // Keep the editor open (and the data in it) unless the save is confirmed.
+    if (res.ok) setEditing(null);
+    else setSaveError(res.error);
   }
 
   const revolving = form.kind === "credit_card" || form.kind === "line_of_credit";
@@ -192,13 +199,18 @@ export function AccountManager() {
             </label>
           </div>
           <div className="mt-3 flex gap-2">
-            <Button onClick={save} disabled={!form.nickname.trim()}>
-              Save account
+            <Button onClick={() => void save()} disabled={!form.nickname.trim() || saving}>
+              {saving ? "Saving…" : "Save account"}
             </Button>
-            <Button variant="ghost" onClick={() => setEditing(null)}>
+            <Button variant="ghost" onClick={() => setEditing(null)} disabled={saving}>
               Cancel
             </Button>
           </div>
+          {saveError ? (
+            <p className="mt-2 text-sm text-danger" role="alert">
+              {saveError} Nothing was saved — your entries are still here.
+            </p>
+          ) : null}
         </Card>
       ) : null}
     </div>

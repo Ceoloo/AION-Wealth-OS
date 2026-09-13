@@ -135,6 +135,17 @@ export type ActionStatus =
 /** How completion is attested — planned vs user-reported vs verified. */
 export type CompletionKind = "planned" | "user_reported" | "verified";
 
+/**
+ * Whether the underlying ADVERSE FACT still holds, recomputed from current data
+ * every time. This is deliberately separate from `ActionStatus`, which records
+ * what the USER DID. Contacting a creditor completes the action; it does not by
+ * itself clear the past-due flag, and the plan must be able to say both.
+ */
+export type IssueState =
+  | "active" // the fact that triggered this is still true
+  | "resolved" // the fact no longer holds
+  | "not_applicable"; // never was a fact-driven issue (e.g. a one-off setup task)
+
 export interface PlanAction {
   /** Stable rule identifier — persists across recomputes. */
   ruleId: string;
@@ -154,6 +165,21 @@ export interface PlanAction {
   completionCriteria: string;
   escalation: string; // when to consult a professional
   teachBack: TeachBack;
+
+  /**
+   * Fingerprint of the facts that triggered THIS occurrence. A completion only
+   * suppresses the occurrence it was recorded against, so genuinely new adverse
+   * facts reactivate the action instead of being hidden by an old completion.
+   */
+  occurrenceKey: string;
+  /** Does the underlying issue still hold right now? Independent of `status`. */
+  issueState: IssueState;
+  /** When this occurrence was completed (if it was). */
+  completedAt: ISODateTime | null;
+  /** How that completion was attested. Never "verified" from a user write path. */
+  completionKind: CompletionKind | null;
+  /** Completions recorded against EARLIER occurrences of this rule. */
+  priorCompletions: number;
 }
 
 export interface TeachBack {
@@ -180,12 +206,30 @@ export type PlanCategory =
   | "recordkeeping"
   | "formation";
 
+export interface PlanProgress {
+  completed: number;
+  total: number;
+  /**
+   * Human-readable description of exactly what the denominator counts. Progress
+   * is measured over the current plan PLUS retained completions of rules that no
+   * longer apply, so a rule dropping out cannot silently shrink the denominator
+   * and inflate the percentage.
+   */
+  basis: string;
+}
+
 export interface GeneratedPlan {
   engineVersion: string;
   generatedAt: ISODateTime;
   snapshotId: UUID | null;
   priorities: PlanAction[]; // at most 3
-  thirtyDayPlan: PlanAction[]; // sequenced
+  thirtyDayPlan: PlanAction[]; // sequenced, currently-applicable
+  /**
+   * Completed work for rules that no longer apply. Retained so history is never
+   * lost and so the progress denominator stays stable.
+   */
+  archivedCompletions: PlanAction[];
+  progress: PlanProgress;
   notices: string[]; // e.g. stabilization-before-borrowing guardrail messages
 }
 
@@ -210,6 +254,11 @@ export interface ActionEvent {
   type: ActionEventType;
   reason: string | null; // required for skip/defer
   at: ISODateTime;
+  /**
+   * Which occurrence of the rule this event refers to. Legacy rows predate the
+   * concept and are treated as the "default" occurrence — see engine.ts.
+   */
+  occurrenceKey: string | null;
 }
 
 export interface WeeklyReview {

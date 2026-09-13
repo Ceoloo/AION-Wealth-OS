@@ -103,3 +103,72 @@ export type SnapshotInput = z.infer<typeof snapshotInputSchema>;
 export type AccountInput = z.infer<typeof accountInputSchema>;
 export type CreditIssueInput = z.infer<typeof creditIssueInputSchema>;
 export type WeeklyReviewInput = z.infer<typeof weeklyReviewInputSchema>;
+
+// ---------------------------------------------------------------------------
+// Runtime guards for values that arrive at server actions as plain JSON.
+// TypeScript types are erased at runtime; these are the actual gate.
+//
+// "Independently verified" states are deliberately NOT accepted from ordinary
+// user write paths. Until a trusted verification workflow exists the product
+// only supports self-reported completion, so `completed_verified` and the
+// formation `verified` status are rejected here (and by RLS — see migration
+// 0003, which closes the direct database API path too).
+// ---------------------------------------------------------------------------
+
+/** Stable engine identifiers: conservative charset, bounded length. */
+export const engineIdSchema = z
+  .string()
+  .min(1)
+  .max(120)
+  .regex(/^[a-z0-9_]+$/i, "Unrecognized identifier");
+
+export const selfReportableActionEventTypeSchema = z.enum([
+  "generated",
+  "started",
+  "completed_user_reported",
+  "skipped",
+  "deferred",
+  "reopened",
+]);
+
+export const actionEventArgsSchema = z
+  .object({
+    actionId: engineIdSchema,
+    ruleId: engineIdSchema,
+    type: selfReportableActionEventTypeSchema,
+    reason: z.string().max(500).nullable().optional(),
+    /** Which occurrence of the rule this refers to; NULL = legacy/default. */
+    occurrenceKey: z.string().max(500).nullable().optional(),
+  })
+  .superRefine((v, ctx) => {
+    if ((v.type === "skipped" || v.type === "deferred") && !v.reason?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "A reason is required to skip or defer an action.",
+        path: ["reason"],
+      });
+    }
+  });
+
+/** Formation statuses a user may self-report. `verified` is excluded. */
+export const selfReportableFormationStatusSchema = z.enum([
+  "not_started",
+  "in_progress",
+  "user_reported_done",
+]);
+
+export const partnerIdSchema = z.string().min(1).max(64).regex(/^[a-z0-9_]+$/i);
+
+export const partnerStatusSchema = z.enum([
+  "not_started",
+  "clicked",
+  "signed_up",
+  "already_use",
+  "skipped",
+]);
+
+export const referralEventTypeSchema = z.enum(["click", "signup_reported"]);
+
+export const formationItemIdSchema = z.string().min(1).max(120).regex(/^[a-z0-9_]+$/i);
+
+export type ActionEventArgs = z.infer<typeof actionEventArgsSchema>;

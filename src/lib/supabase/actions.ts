@@ -11,6 +11,12 @@ import type { FormationItemStatus } from "../domain/formation";
 import type { PartnerStatus, PartnerCategory, ReferralEventType } from "../domain/partners";
 import { PARTNERS } from "../domain/partners";
 import {
+  actionEventArgsSchema,
+  formationItemIdSchema,
+  partnerIdSchema,
+  partnerStatusSchema,
+  referralEventTypeSchema,
+  selfReportableFormationStatusSchema,
   accountInputSchema,
   creditIssueInputSchema,
   profileInputSchema,
@@ -49,6 +55,26 @@ async function requireCtx(): Promise<{ supabase: SupabaseClient; uid: string }> 
   const uid = data.user?.id;
   if (!uid) throw new AuthRequiredError();
   return { supabase, uid };
+}
+
+/**
+ * Destructive real-mode operations require a RECENT sign-in, not merely a valid
+ * session. Access tokens refresh silently for a long time, so token validity is
+ * not evidence the person at the keyboard is the account holder.
+ */
+const REAUTH_WINDOW_MS = 10 * 60 * 1000;
+
+async function requireRecentAuth(): Promise<{ supabase: SupabaseClient; uid: string }> {
+  const supabase = await createSupabaseServerClient();
+  if (!supabase) throw new Error("SUPABASE_NOT_CONFIGURED");
+  const { data } = await supabase.auth.getUser();
+  const user = data.user;
+  if (!user) throw new AuthRequiredError();
+  const lastSignIn = user.last_sign_in_at ? Date.parse(user.last_sign_in_at) : NaN;
+  if (!Number.isFinite(lastSignIn) || Date.now() - lastSignIn > REAUTH_WINDOW_MS) {
+    throw new Error("REAUTH_REQUIRED");
+  }
+  return { supabase, uid: user.id };
 }
 
 export async function loadBundleAction(): Promise<UserDataBundle> {
@@ -167,17 +193,19 @@ export async function recordActionEventAction(args: {
   ruleId: string;
   type: ActionEventType;
   reason?: string | null;
+  occurrenceKey?: string | null;
 }): Promise<UserDataBundle> {
   const { supabase, uid } = await requireCtx();
-  if ((args.type === "skipped" || args.type === "deferred") && !args.reason) {
-    throw new Error("A reason is required to skip or defer an action.");
-  }
+  // Runtime validation. Rejects `completed_verified` outright: ownership is not
+  // independent verification. RLS (migration 0003) blocks it at the DB too.
+  const input = actionEventArgsSchema.parse(args);
   const { error } = await supabase.from("action_events").insert({
     owner_id: uid,
-    action_id: args.actionId,
-    rule_id: args.ruleId,
-    type: args.type,
-    reason: args.reason ?? null,
+    action_id: input.actionId,
+    rule_id: input.ruleId,
+    type: input.type,
+    reason: input.reason ?? null,
+    occurrence_key: input.occurrenceKey ?? null,
   });
   if (error) throw new Error(error.message);
   return loadBundle(supabase, uid);
@@ -204,9 +232,12 @@ export async function setFormationStatusAction(
   status: FormationItemStatus,
 ): Promise<UserDataBundle> {
   const { supabase, uid } = await requireCtx();
+  const item = formationItemIdSchema.parse(itemId);
+  // `verified` is rejected: a user marking their own filing done is a self-report.
+  const checked = selfReportableFormationStatusSchema.parse(status);
   // v0.1 maintains only the NY checklist, so state is fixed to 'NY'.
   const { error } = await supabase.from("formation_checklists").upsert(
-    { owner_id: uid, state: "NY", item_id: itemId, status, updated_at: new Date().toISOString() },
+    { owner_id: uid, state: "NY", item_id: item, status: checked, updated_at: new Date().toISOString() },
     { onConflict: "owner_id,state,item_id" },
   );
   if (error) throw new Error(error.message);
@@ -218,8 +249,10 @@ export async function setPartnerStatusAction(
   status: PartnerStatus,
 ): Promise<UserDataBundle> {
   const { supabase, uid } = await requireCtx();
+  const pid = partnerIdSchema.parse(partnerId);
+  const st = partnerStatusSchema.parse(status);
   const { error } = await supabase.from("partner_statuses").upsert(
-    { owner_id: uid, partner_id: partnerId, status, updated_at: new Date().toISOString() },
+    { owner_id: uid, partner_id: pid, status: st, updated_at: new Date().toISOString() },
     { onConflict: "owner_id,partner_id" },
   );
   if (error) throw new Error(error.message);
@@ -240,39 +273,56 @@ export async function recordReferralEventAction(
   type: ReferralEventType,
 ): Promise<UserDataBundle> {
   const { supabase, uid } = await requireCtx();
-  const category: PartnerCategory =
-    PARTNERS.find((p) => p.id === partnerId)?.category ?? "banking";
+  const pid = partnerIdSchema.parse(partnerId);
+  const evType = referralEventTypeSchema.parse(type);
+  const known = PARTNERS.find((p) => p.id === pid);
+  if (!known) throw new Error("UNKNOWN_PARTNER");
+  const category: PartnerCategory = known.category;
   const { error } = await supabase.from("referral_events").insert({
     owner_id: uid,
-    partner_id: partnerId,
+    partner_id: pid,
     category,
-    type,
+    type: evType,
   });
   if (error) throw new Error(error.message);
   return loadBundle(supabase, uid);
 }
 
 /**
- * Authenticated account data deletion. Deleting the profile cascades to every
- * owned row (see 0001 FKs). In production, gate this behind reauthentication
- * before calling; residual backup copies age out per the retention policy.
+ * Deletes all of this user's DATA. It deliberately does not delete the auth
+ * identity (that needs service-role administration), so the product copy says
+ * "delete my data" and the sign-in is retained — see docs and Settings.
+ *
+ * Requires a recent sign-in, runs as one transactional database routine, and
+ * verifies its own postcondition. Any failure throws, so a partial deletion can
+ * never be reported to the user as success.
  */
 export async function deleteAllDataAction(): Promise<UserDataBundle> {
-  const { supabase, uid } = await requireCtx();
-  // Delete children first (defensive) then the profile.
-  for (const table of [
-    "financial_snapshots",
-    "accounts",
-    "credit_issues",
-    "action_events",
-    "weekly_reviews",
-    "formation_checklists",
-    "partner_statuses",
-    "referral_events",
-    "ai_usage",
-  ]) {
-    await supabase.from(table).delete().eq("owner_id", uid);
+  const { supabase, uid } = await requireRecentAuth();
+
+  const { data, error } = await supabase.rpc("delete_my_data");
+  if (error) throw new Error(error.message);
+
+  // The routine returns per-table counts plus its own verification. Treat a
+  // missing/!=0 verification as a failure rather than assuming success.
+  const receipt = (data ?? null) as Record<string, number> | null;
+  if (!receipt || receipt.verified_remaining !== 0) {
+    throw new Error("DELETION_UNVERIFIED");
   }
-  await supabase.from("profiles").delete().eq("owner_id", uid);
+
+  // Independent re-read: the bundle must genuinely come back empty.
+  const after = await loadBundle(supabase, uid);
+  const leftovers =
+    after.snapshots.length +
+    after.accounts.length +
+    after.creditIssues.length +
+    after.actionEvents.length +
+    after.weeklyReviews.length +
+    after.referralEvents.length +
+    Object.keys(after.formationStatuses).length +
+    Object.keys(after.partnerStatuses).length +
+    (after.profile ? 1 : 0);
+  if (leftovers !== 0) throw new Error("DELETION_INCOMPLETE");
+
   return emptyBundle(uid);
 }

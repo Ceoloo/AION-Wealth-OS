@@ -157,8 +157,8 @@ describe("past-due prioritization", () => {
 describe("acceptance #2 — recompute preserves completed work and avoids duplicates", () => {
   it("marks completed actions complete and keeps a single stable action", () => {
     const events: ActionEvent[] = [
-      { id: "e1", ownerId: "u1", actionId: "establish_recordkeeping", ruleId: "establish_recordkeeping", type: "generated", reason: null, at: "2026-09-10T00:00:00.000Z" },
-      { id: "e2", ownerId: "u1", actionId: "establish_recordkeeping", ruleId: "establish_recordkeeping", type: "completed_user_reported", reason: null, at: "2026-09-11T00:00:00.000Z" },
+      { id: "e1", ownerId: "u1", actionId: "establish_recordkeeping", ruleId: "establish_recordkeeping", type: "generated", reason: null, occurrenceKey: null, at: "2026-09-10T00:00:00.000Z" },
+      { id: "e2", ownerId: "u1", actionId: "establish_recordkeeping", ruleId: "establish_recordkeeping", type: "completed_user_reported", reason: null, occurrenceKey: null, at: "2026-09-11T00:00:00.000Z" },
     ];
     const plan1 = generatePlan(input({ events }));
     const rec = plan1.thirtyDayPlan.filter((a) => a.actionId === "establish_recordkeeping");
@@ -177,7 +177,7 @@ describe("acceptance #2 — recompute preserves completed work and avoids duplic
 
   it("respects skip/defer by excluding from priorities but keeping in the plan", () => {
     const events: ActionEvent[] = [
-      { id: "e1", ownerId: "u1", actionId: "review_credit_report", ruleId: "review_credit_report", type: "deferred", reason: "later", at: "2026-09-11T00:00:00.000Z" },
+      { id: "e1", ownerId: "u1", actionId: "review_credit_report", ruleId: "review_credit_report", type: "deferred", reason: "later", occurrenceKey: null, at: "2026-09-11T00:00:00.000Z" },
     ];
     const plan = generatePlan(input({ events }));
     expect(plan.priorities.find((a) => a.actionId === "review_credit_report")).toBeUndefined();
@@ -186,8 +186,8 @@ describe("acceptance #2 — recompute preserves completed work and avoids duplic
 
   it("a reopened action returns to in_progress", () => {
     const events: ActionEvent[] = [
-      { id: "e1", ownerId: "u1", actionId: "establish_recordkeeping", ruleId: "establish_recordkeeping", type: "completed_user_reported", reason: null, at: "2026-09-11T00:00:00.000Z" },
-      { id: "e2", ownerId: "u1", actionId: "establish_recordkeeping", ruleId: "establish_recordkeeping", type: "reopened", reason: null, at: "2026-09-12T00:00:00.000Z" },
+      { id: "e1", ownerId: "u1", actionId: "establish_recordkeeping", ruleId: "establish_recordkeeping", type: "completed_user_reported", reason: null, occurrenceKey: null, at: "2026-09-11T00:00:00.000Z" },
+      { id: "e2", ownerId: "u1", actionId: "establish_recordkeeping", ruleId: "establish_recordkeeping", type: "reopened", reason: null, occurrenceKey: null, at: "2026-09-12T00:00:00.000Z" },
     ];
     const plan = generatePlan(input({ events }));
     const rec = plan.thirtyDayPlan.find((a) => a.actionId === "establish_recordkeeping");

@@ -34,3 +34,6 @@ yarn-error.log*
 
 # vitest
 /.vitest
+
+# typescript incremental build artifact
+tsconfig.tsbuildinfo

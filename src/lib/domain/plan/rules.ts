@@ -9,15 +9,55 @@ import type { ISODate } from "../types";
  * decided by these rules only.
  */
 
-export const ENGINE_VERSION = "2026.09.1";
+export const ENGINE_VERSION = "2026.09.2"; // occurrence-aware completion vs issue resolution
 
 export interface RuleContext {
   asOf: ISODate;
   profile: Profile | null;
   snapshot: FinancialSnapshot | null;
+  /** Full dated history, oldest first. Used to count issue episodes. */
+  snapshots: FinancialSnapshot[];
   accounts: Account[];
   creditIssues: CreditIssue[];
   summary: FinanceSummary;
+}
+
+/**
+ * Counts how many times a condition newly became true across the dated snapshot
+ * history (false -> true transitions). This gives a recurring issue a stable
+ * EPISODE number: while the condition holds the number is unchanged, and if it
+ * clears and later returns it increments — producing a new occurrence rather
+ * than letting an old completion hide the fresh problem.
+ */
+export function episodeIndex(
+  snapshots: FinancialSnapshot[],
+  predicate: (s: FinancialSnapshot) => boolean,
+): number {
+  let episodes = 0;
+  let previous = false;
+  for (const s of snapshots) {
+    const now = predicate(s);
+    if (now && !previous) episodes += 1;
+    previous = now;
+  }
+  return episodes;
+}
+
+function surplusIsNegative(s: FinancialSnapshot): boolean {
+  if (s.takeHomeIncomeCents === null) return false;
+  const value =
+    s.takeHomeIncomeCents -
+    (s.essentialSpendingCents ?? 0) -
+    (s.otherSpendingCents ?? 0) -
+    (s.requiredDebtPaymentsCents ?? 0);
+  return value < 0;
+}
+
+function coverageIsThin(s: FinancialSnapshot): boolean {
+  if (s.availableCashCents === null) return false;
+  const denom = (s.essentialSpendingCents ?? 0) + (s.requiredDebtPaymentsCents ?? 0);
+  if (denom <= 0) return false;
+  return s.availableCashCents / denom < 3;
 }
 
 export interface RuleResult {
@@ -27,6 +67,17 @@ export interface RuleResult {
   insufficient?: boolean;
   why: string;
   supportingInputs: string[];
+  /**
+   * Fingerprint of the facts driving this occurrence. Defaults to "default" for
+   * one-off tasks that never recur. A change here means genuinely new adverse
+   * facts, so a previous completion no longer suppresses the action.
+   */
+  occurrenceKey?: string;
+  /**
+   * Does the underlying adverse fact still hold? Defaults to `applies`. Set
+   * false for tasks that are not fact-driven issues.
+   */
+  issueActive?: boolean;
   /** Optional dynamic overrides merged onto the static template. */
   overrides?: Partial<PlanAction>;
 }
@@ -39,7 +90,19 @@ export interface Rule {
   /** Static template; `evaluate` supplies dynamic why/inputs/overrides. */
   template: Omit<
     PlanAction,
-    "ruleId" | "actionId" | "priorityRank" | "status" | "why" | "supportingInputs" | "prerequisites"
+    | "ruleId"
+    | "actionId"
+    | "priorityRank"
+    | "status"
+    | "why"
+    | "supportingInputs"
+    | "prerequisites"
+    // Occurrence/issue fields are computed per evaluation, never templated.
+    | "occurrenceKey"
+    | "issueState"
+    | "completedAt"
+    | "completionKind"
+    | "priorCompletions"
   >;
   evaluate: (ctx: RuleContext) => RuleResult;
 }
@@ -102,6 +165,9 @@ export const RULES: Rule[] = [
         insufficient: true,
         why: `Core facts are missing: ${missing.join(", ")}. These drive every calculation.`,
         supportingInputs: missing,
+        // A different set of gaps is a different ask.
+        occurrenceKey: missing.slice().sort().join("|"),
+        issueActive: true,
       };
     },
   },
@@ -148,6 +214,10 @@ export const RULES: Rule[] = [
           applies: true,
           why: `Your estimated monthly surplus is negative (${s.value} cents). Stabilizing comes before new borrowing or elective costs.`,
           supportingInputs: ["monthly surplus", ...s.missingInputs],
+          // Stable while this episode of negative surplus lasts; a later relapse
+          // is a new episode, so an old completion cannot mask it.
+          occurrenceKey: `episode:${episodeIndex(ctx.snapshots, surplusIsNegative)}`,
+          issueActive: true,
         };
       }
       return { applies: false, why: "", supportingInputs: [] };
@@ -188,10 +258,19 @@ export const RULES: Rule[] = [
     },
     evaluate: (ctx) => {
       if (!ctx.summary.hasPastDue) return { applies: false, why: "", supportingInputs: [] };
+      // Keyed on WHICH accounts are past due. Contacting the creditor completes
+      // the action for those accounts and the completion sticks; a different
+      // account falling past due is a new occurrence that reactivates it.
+      const pastDueIds = ctx.accounts
+        .filter((a) => (a.pastDueCents ?? 0) > 0)
+        .map((a) => a.id)
+        .sort();
       return {
         applies: true,
         why: `You have ${ctx.summary.pastDueCount || "one or more"} account(s) marked past due.`,
         supportingInputs: ["accounts with past-due amounts"],
+        occurrenceKey: pastDueIds.length ? pastDueIds.join("|") : "reported",
+        issueActive: true,
       };
     },
   },
@@ -235,6 +314,8 @@ export const RULES: Rule[] = [
           applies: true,
           why: `Estimated cash coverage is about ${c.value} month(s), below a 3-month starting cushion.`,
           supportingInputs: ["cash coverage estimate", ...c.missingInputs],
+          occurrenceKey: `episode:${episodeIndex(ctx.snapshots, coverageIsThin)}`,
+          issueActive: true,
         };
       }
       return { applies: false, why: "", supportingInputs: [] };
@@ -282,6 +363,9 @@ export const RULES: Rule[] = [
           applies: true,
           why: `You have ${openIssues.length} credit issue(s) in progress to follow up on.`,
           supportingInputs: ["open credit issues"],
+          // A newly logged issue is new adverse information.
+          occurrenceKey: openIssues.map((i) => i.id).sort().join("|"),
+          issueActive: true,
         };
       }
       if (util !== null && util > 0.3) {
@@ -289,6 +373,8 @@ export const RULES: Rule[] = [
           applies: true,
           why: `Estimated revolving utilization is about ${Math.round(util * 100)}% (app estimate). Reviewing your report is a good next step.`,
           supportingInputs: ["revolving utilization estimate"],
+          occurrenceKey: "utilization_over_30",
+          issueActive: true,
         };
       }
       // Still worth doing, but lower urgency (kept in the 30-day plan).
@@ -296,6 +382,10 @@ export const RULES: Rule[] = [
         applies: true,
         why: "Reviewing your reports establishes a baseline and catches errors early.",
         supportingInputs: [],
+        // The no-adverse-facts baseline IS the default occurrence, so existing
+        // completions/deferrals recorded before occurrence tracking still apply.
+        occurrenceKey: "default",
+        issueActive: false, // a good habit, not an outstanding adverse fact
       };
     },
   },
@@ -335,6 +425,8 @@ export const RULES: Rule[] = [
       applies: true,
       why: "A simple system now makes every later step easier.",
       supportingInputs: [],
+      occurrenceKey: "default", // one-off setup task, never recurs
+      issueActive: false,
     }),
   },
 
@@ -381,6 +473,8 @@ export const RULES: Rule[] = [
           applies: true,
           why: "Formation involves elective costs; because your surplus is negative, stabilize first. Kept in your plan but not a current priority.",
           supportingInputs: ["monthly surplus (negative)"],
+          occurrenceKey: `state:${ctx.profile?.businessState ?? "none"}`,
+          issueActive: false,
           overrides: { effortMinutes: 25 },
         };
       }
@@ -388,6 +482,9 @@ export const RULES: Rule[] = [
         applies: true,
         why: "You've indicated interest in forming a business; here's an honest readiness review.",
         supportingInputs: ["profile goals / business state"],
+        // Changing operating state means re-evaluating against a different regime.
+        occurrenceKey: `state:${ctx.profile?.businessState ?? "none"}`,
+        issueActive: false,
       };
     },
   },

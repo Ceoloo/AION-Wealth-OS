@@ -37,6 +37,25 @@ export default function PlanPage() {
         ))}
       </div>
 
+      {plan.archivedCompletions.length > 0 ? (
+        <div>
+          <SectionTitle
+            title="Resolved earlier"
+            subtitle="Completed steps that no longer apply. Kept so your history — and your progress denominator — stay honest."
+          />
+          <Card className="divide-y divide-ink-line p-0">
+            {plan.archivedCompletions.map((a) => (
+              <div key={a.actionId} className="flex items-center justify-between gap-2 px-4 py-2 text-sm">
+                <span className="text-cloud">{a.title}</span>
+                <span className="shrink-0 text-xs text-ok">
+                  resolved{a.completedAt ? ` · ${a.completedAt.slice(0, 10)}` : ""}
+                </span>
+              </div>
+            ))}
+          </Card>
+        </div>
+      ) : null}
+
       <div>
         <SectionTitle title="Completion history" subtitle="Actions taken vs. verified outcomes." />
         {completedEvents.length === 0 ? (
