@@ -239,6 +239,7 @@ export function revolvingUtilization(accounts: Account[]): Metric<number> & {
   includedBalanceCents: Cents;
   includedLimitCents: Cents;
   unknownLimitCount: number;
+  unknownBalanceCount: number;
 } {
   const revolving = accounts.filter(
     (a) => a.isRevolving && (a.kind === "credit_card" || a.kind === "line_of_credit"),
@@ -247,6 +248,7 @@ export function revolvingUtilization(accounts: Account[]): Metric<number> & {
   let includedBalance = 0;
   let includedLimit = 0;
   let unknownLimitCount = 0;
+  let unknownBalanceCount = 0;
   let anyIncluded = false;
 
   for (const a of revolving) {
@@ -254,8 +256,15 @@ export function revolvingUtilization(accounts: Account[]): Metric<number> & {
       unknownLimitCount += 1;
       continue; // cannot include without a positive limit
     }
+    if (a.balanceCents === null) {
+      // An unknown balance must NOT be counted as 0. Adding the limit to the
+      // denominator while contributing nothing to the numerator understates
+      // utilization — an error in the flattering direction. Exclude both sides.
+      unknownBalanceCount += 1;
+      continue;
+    }
     includedLimit += a.creditLimitCents;
-    includedBalance += a.balanceCents ?? 0;
+    includedBalance += a.balanceCents;
     anyIncluded = true;
   }
 
@@ -267,18 +276,32 @@ export function revolvingUtilization(accounts: Account[]): Metric<number> & {
       `${unknownLimitCount} revolving account(s) have unknown limits and are excluded from the ratio.`,
     );
   }
+  if (unknownBalanceCount > 0) {
+    assumptions.push(
+      `${unknownBalanceCount} revolving account(s) have unknown balances and are excluded entirely — counting them as zero would understate your utilization.`,
+    );
+  }
 
-  const missing = unknownLimitCount > 0 ? ["revolving credit limits"] : [];
+  const missing: string[] = [];
+  if (unknownLimitCount > 0) missing.push("revolving credit limits");
+  if (unknownBalanceCount > 0) missing.push("revolving balances");
 
   if (!anyIncluded || includedLimit === 0) {
+    // Say which of the two reasons actually applies. Claiming "no known limits"
+    // when every limit is known and only the balances are missing would send
+    // the user to fix the wrong field.
+    const reason =
+      unknownBalanceCount > 0 && unknownLimitCount === 0
+        ? "No revolving accounts with known balances, so utilization is undefined."
+        : unknownBalanceCount > 0
+          ? "No revolving account has both a known positive limit and a known balance, so utilization is undefined."
+          : "No revolving accounts with known positive limits, so utilization is undefined.";
     return {
-      ...metric<number>(null, missing, [
-        ...assumptions,
-        "No revolving accounts with known positive limits, so utilization is undefined.",
-      ], revolving.length > 0),
+      ...metric<number>(null, missing, [...assumptions, reason], revolving.length > 0),
       includedBalanceCents: includedBalance,
       includedLimitCents: includedLimit,
       unknownLimitCount,
+      unknownBalanceCount,
     };
   }
 
@@ -288,6 +311,7 @@ export function revolvingUtilization(accounts: Account[]): Metric<number> & {
     includedBalanceCents: includedBalance,
     includedLimitCents: includedLimit,
     unknownLimitCount,
+    unknownBalanceCount,
   };
 }
 

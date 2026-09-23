@@ -177,6 +177,10 @@ export function buildExport(bundle: UserDataBundle, asOf: string, generatedAt: s
               includedBalanceCents: summary.utilization.includedBalanceCents,
               includedLimitCents: summary.utilization.includedLimitCents,
               unknownLimitCount: summary.utilization.unknownLimitCount,
+              // Without this, accounts excluded for an unknown BALANCE are
+              // invisible and the exported totals cannot be reconciled against
+              // the exported account list.
+              unknownBalanceCount: summary.utilization.unknownBalanceCount,
             },
           }
         : null,
