@@ -8,9 +8,10 @@ import { latestSnapshot } from "@/lib/data/bundle";
 import { todayISO } from "@/lib/today";
 import { Partners } from "@/components/Partners";
 import { PLAN_BEFORE_PARTNERS } from "@/lib/experiments";
+import { JourneyStrip } from "@/components/JourneyStrip";
 
 export default function TodayPage() {
-  const { ready, hasData, bundle, plan, loadDemoSeed, mode } = useApp();
+  const { ready, hasData, bundle, plan, journey, loadDemoSeed, mode } = useApp();
 
   if (!ready) return <p className="text-sm text-cloud-faint">Loading…</p>;
 
@@ -77,6 +78,8 @@ export default function TodayPage() {
         <h1 className="text-xl font-bold text-cloud">Today</h1>
         <p className="text-sm text-cloud-muted">Your next steps, in order.</p>
       </div>
+
+      <JourneyStrip journey={journey} />
 
       {/* Snapshot freshness + progress */}
       <div className="grid grid-cols-2 gap-3">

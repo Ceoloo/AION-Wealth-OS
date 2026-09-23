@@ -28,6 +28,7 @@ export function rowToProfile(r: Row): Profile {
     ownerId: str(r.owner_id),
     residenceState: nStr(r.residence_state) as Profile["residenceState"],
     businessState: nStr(r.business_state) as Profile["businessState"],
+    situation: nStr(r.situation) as Profile["situation"],
     goals: Array.isArray(r.goals) ? (r.goals as string[]) : [],
     experience: nStr(r.experience) as Profile["experience"],
     weeklyTimeMinutes: nNum(r.weekly_time_minutes),

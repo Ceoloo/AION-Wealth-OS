@@ -16,6 +16,7 @@ export function buildDemoBundle(): UserDataBundle {
       ownerId: DEMO_OWNER_ID,
       residenceState: "NY",
       businessState: "NY",
+      situation: "just_covering",
       goals: ["form_business", "improve_credit", "build_cushion"],
       experience: "new",
       weeklyTimeMinutes: 120,

@@ -5,6 +5,8 @@ import type { UserDataBundle } from "../data/bundle";
 import { emptyBundle } from "../data/bundle";
 import { buildDemoBundle, DEMO_OWNER_ID } from "./demoData";
 import { generatePlan } from "../domain/plan/engine";
+import { assessJourney, type JourneyAssessment } from "../domain/journey";
+import { summarize } from "../domain/finance";
 import type { GeneratedPlan } from "../domain/types";
 import { nowISO, todayISO } from "../today";
 import type {
@@ -77,6 +79,7 @@ interface AppState {
   canWrite: boolean;
   bundle: UserDataBundle;
   plan: GeneratedPlan;
+  journey: JourneyAssessment;
   hasData: boolean;
 
   // session control
@@ -318,6 +321,36 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     [bundle],
   );
 
+  // Journey staging is derived from the same facts as the plan — never from the
+  // plan's own output — so a stage can't drift from the numbers behind it.
+  const journey = useMemo<JourneyAssessment>(() => {
+    const snapshot = latest(bundle);
+    return assessJourney({
+      snapshot,
+      accounts: bundle.accounts,
+      creditIssues: bundle.creditIssues,
+      summary: summarize(
+        snapshot ?? {
+          id: "none",
+          ownerId: bundle.ownerId,
+          asOf: todayISO(),
+          takeHomeIncomeCents: null,
+          essentialSpendingCents: null,
+          otherSpendingCents: null,
+          requiredDebtPaymentsCents: null,
+          availableCashCents: null,
+          otherAssetsCents: null,
+          liabilitiesCents: null,
+          hasPastDueAccounts: null,
+          selfReportedScore: null,
+          createdAt: `${todayISO()}T00:00:00.000Z`,
+        },
+        bundle.accounts,
+      ),
+      selfReported: bundle.profile?.situation ?? null,
+    });
+  }, [bundle]);
+
   const persistDemoBundle = useCallback((next: UserDataBundle) => {
     try {
       if (typeof window !== "undefined") window.localStorage.setItem(DEMO_KEY, JSON.stringify(next));
@@ -338,6 +371,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     canWrite,
     bundle,
     plan,
+    journey,
     hasData: bundle.profile !== null || bundle.snapshots.length > 0,
 
     enterDemo: () => {

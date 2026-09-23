@@ -55,6 +55,7 @@ export default function BusinessPage() {
                 const res = await saveProfile({
                   residenceState: bundle.profile.residenceState,
                   businessState: v,
+                  situation: bundle.profile.situation,
                   goals: Array.from(new Set([...(bundle.profile.goals ?? []), "form_business"])),
                   experience: bundle.profile.experience,
                   weeklyTimeMinutes: bundle.profile.weeklyTimeMinutes,
