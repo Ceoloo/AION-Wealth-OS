@@ -119,7 +119,7 @@ try {
   check("onboarding navigates only after a confirmed save", /\/finances/.test(page.url()));
 
   // 3. snapshot save
-  await page.getByRole("button", { name: /Edit snapshot/ }).click().catch(() => {});
+  await page.getByRole("tab", { name: /Edit snapshot/ }).click();
   await page.waitForTimeout(500);
   const money = page.locator('input[inputmode="decimal"]');
   if (await money.count()) {

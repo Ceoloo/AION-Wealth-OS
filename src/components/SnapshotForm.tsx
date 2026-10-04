@@ -1,16 +1,23 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useId, useState } from "react";
+import { Check } from "lucide-react";
 import { useApp } from "@/lib/store/provider";
 import { latestSnapshot } from "@/lib/data/bundle";
-import { Button, Card, Field, TextInput } from "./ui";
-import { MoneyInput } from "./MoneyInput";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
+import { Field, InlineError, Segmented } from "@/components/app/primitives";
+import { MoneyInput, useFieldValidity } from "./MoneyInput";
 import { todayISO } from "@/lib/today";
 import type { SnapshotInput } from "@/lib/validation/schemas";
 
 export function SnapshotForm({ onSaved }: { onSaved?: () => void }) {
   const { bundle, saveSnapshot } = useApp();
   const prev = latestSnapshot(bundle);
+  const dateId = useId();
+  const validity = useFieldValidity();
 
   const [form, setForm] = useState<SnapshotInput>(() => ({
     asOf: todayISO(),
@@ -34,116 +41,121 @@ export function SnapshotForm({ onSaved }: { onSaved?: () => void }) {
 
   return (
     <Card>
-      <p className="text-sm text-cloud-muted">
-        Saving records a <strong>new dated snapshot</strong> — past snapshots are kept so you can
-        track change over time.
-      </p>
+      <CardContent className="space-y-6">
+        <p className="text-sm text-muted-foreground">
+          Saving records a <strong className="text-foreground">new dated snapshot</strong> — past
+          snapshots are kept so you can track change over time.
+        </p>
 
-      <div className="mt-3 grid grid-cols-1 gap-3">
-        <Field label="Snapshot date">
-          <TextInput
-            type="date"
-            value={form.asOf}
-            onChange={(e) => set("asOf", e.target.value)}
+        <Field label="Snapshot date" htmlFor={dateId} className="sm:max-w-xs">
+          <Input id={dateId} type="date" className="figure" value={form.asOf} onChange={(e) => set("asOf", e.target.value)} />
+        </Field>
+
+        <FormGroup title="Monthly cash flow">
+          <MoneyInput
+            label="Take-home income (monthly)"
+            valueCents={form.takeHomeIncomeCents}
+            onChangeCents={(v) => set("takeHomeIncomeCents", v)}
+            onValidityChange={validity.report("takeHomeIncomeCents")}
+          />
+          <MoneyInput
+            label="Essential spending (monthly)"
+            hint="Housing, utilities, food, transport, insurance."
+            valueCents={form.essentialSpendingCents}
+            onChangeCents={(v) => set("essentialSpendingCents", v)}
+            onValidityChange={validity.report("essentialSpendingCents")}
+          />
+          <MoneyInput
+            label="Other spending (monthly)"
+            hint="Non-essential/discretionary."
+            valueCents={form.otherSpendingCents}
+            onChangeCents={(v) => set("otherSpendingCents", v)}
+            onValidityChange={validity.report("otherSpendingCents")}
+          />
+          <MoneyInput
+            label="Required debt payments (monthly)"
+            hint="Total minimums. Don't also count these inside 'essential spending'."
+            valueCents={form.requiredDebtPaymentsCents}
+            onChangeCents={(v) => set("requiredDebtPaymentsCents", v)}
+            onValidityChange={validity.report("requiredDebtPaymentsCents")}
+          />
+        </FormGroup>
+
+        <FormGroup title="Balance sheet">
+          <MoneyInput
+            label="Available cash"
+            hint="Liquid cash you could use this month."
+            valueCents={form.availableCashCents}
+            onChangeCents={(v) => set("availableCashCents", v)}
+            onValidityChange={validity.report("availableCashCents")}
+          />
+          <MoneyInput label="Other assets" valueCents={form.otherAssetsCents} onChangeCents={(v) => set("otherAssetsCents", v)}
+            onValidityChange={validity.report("otherAssetsCents")} />
+          <MoneyInput
+            label="Total liabilities"
+            hint="Total owed. Should reconcile with your account balances."
+            valueCents={form.liabilitiesCents}
+            onChangeCents={(v) => set("liabilitiesCents", v)}
+            onValidityChange={validity.report("liabilitiesCents")}
+          />
+        </FormGroup>
+
+        <Field label="Any past-due accounts?">
+          <Segmented
+            label="Any past-due accounts?"
+            value={form.hasPastDueAccounts}
+            onChange={(v) => set("hasPastDueAccounts", v)}
+            options={[
+              { label: "Yes", value: true },
+              { label: "No", value: false },
+              { label: "Unknown", value: null },
+            ]}
           />
         </Field>
 
-        <p className="pt-1 text-xs font-semibold uppercase tracking-wide text-cloud-faint">
-          Monthly cash flow
-        </p>
-        <MoneyInput
-          label="Take-home income (monthly)"
-          valueCents={form.takeHomeIncomeCents}
-          onChangeCents={(v) => set("takeHomeIncomeCents", v)}
-        />
-        <MoneyInput
-          label="Essential spending (monthly)"
-          hint="Housing, utilities, food, transport, insurance."
-          valueCents={form.essentialSpendingCents}
-          onChangeCents={(v) => set("essentialSpendingCents", v)}
-        />
-        <MoneyInput
-          label="Other spending (monthly)"
-          hint="Non-essential/discretionary."
-          valueCents={form.otherSpendingCents}
-          onChangeCents={(v) => set("otherSpendingCents", v)}
-        />
-        <MoneyInput
-          label="Required debt payments (monthly)"
-          hint="Total minimums. Don't also count these inside 'essential spending'."
-          valueCents={form.requiredDebtPaymentsCents}
-          onChangeCents={(v) => set("requiredDebtPaymentsCents", v)}
-        />
+        <Separator />
 
-        <p className="pt-1 text-xs font-semibold uppercase tracking-wide text-cloud-faint">
-          Balance sheet
-        </p>
-        <MoneyInput
-          label="Available cash"
-          hint="Liquid cash you could use this month."
-          valueCents={form.availableCashCents}
-          onChangeCents={(v) => set("availableCashCents", v)}
-        />
-        <MoneyInput
-          label="Other assets"
-          valueCents={form.otherAssetsCents}
-          onChangeCents={(v) => set("otherAssetsCents", v)}
-        />
-        <MoneyInput
-          label="Total liabilities"
-          hint="Total owed. Should reconcile with your account balances."
-          valueCents={form.liabilitiesCents}
-          onChangeCents={(v) => set("liabilitiesCents", v)}
-        />
-
-        <Field label="Any past-due accounts?">
-          <div className="flex gap-2">
-            {(
-              [
-                ["Yes", true],
-                ["No", false],
-                ["Unknown", null],
-              ] as const
-            ).map(([label, val]) => (
-              <Button
-                key={label}
-                type="button"
-                variant={form.hasPastDueAccounts === val ? "primary" : "secondary"}
-                onClick={() => set("hasPastDueAccounts", val)}
-              >
-                {label}
-              </Button>
-            ))}
-          </div>
-        </Field>
-      </div>
-
-      <div className="mt-4 flex items-center gap-3">
-        <Button
-          disabled={saving}
-          onClick={async () => {
-            setSaving(true);
-            setSaveError(null);
-            setSaved(false);
-            const res = await saveSnapshot(form);
-            setSaving(false);
-            if (res.ok) {
-              setSaved(true);
-              onSaved?.();
-            } else {
-              setSaveError(res.error);
-            }
-          }}
-        >
-          {saving ? "Saving…" : "Save snapshot"}
-        </Button>
-        {saved ? <span className="text-sm text-ok">Saved. Your plan updated.</span> : null}
-        {saveError ? (
-          <span className="text-sm text-danger" role="alert">
-            {saveError} Nothing was saved — your entries are still here.
-          </span>
-        ) : null}
-      </div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <Button
+            disabled={saving || validity.hasInvalid}
+            className="sm:w-auto"
+            onClick={async () => {
+              setSaving(true);
+              setSaveError(null);
+              setSaved(false);
+              const res = await saveSnapshot(form);
+              setSaving(false);
+              if (res.ok) {
+                setSaved(true);
+                onSaved?.();
+              } else {
+                setSaveError(res.error);
+              }
+            }}
+          >
+            {saving ? "Saving…" : "Save snapshot"}
+          </Button>
+          {validity.hasInvalid ? (
+            <span className="text-sm text-danger">Fix the highlighted amounts to save.</span>
+          ) : null}
+          {saved ? (
+            <span className="inline-flex items-center gap-1.5 text-sm text-success">
+              <Check className="size-4" />
+              Saved. Your plan updated.
+            </span>
+          ) : null}
+        </div>
+        {saveError ? <InlineError>{saveError} Nothing was saved — your entries are still here.</InlineError> : null}
+      </CardContent>
     </Card>
+  );
+}
+
+function FormGroup({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <fieldset className="space-y-4">
+      <legend className="mb-4 text-sm font-semibold text-foreground">{title}</legend>
+      <div className="grid gap-4 sm:grid-cols-2">{children}</div>
+    </fieldset>
   );
 }

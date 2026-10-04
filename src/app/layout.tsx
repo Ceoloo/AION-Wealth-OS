@@ -1,5 +1,10 @@
 import type { Metadata, Viewport } from "next";
+import { Geist } from "next/font/google";
 import "./globals.css";
+import { cn } from "@/lib/utils";
+import { Providers } from "@/components/providers";
+
+const geist = Geist({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
 
 export const metadata: Metadata = {
   title: "AION Wealth OS",
@@ -10,13 +15,16 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#0b1220",
+  viewportFit: "cover",
+  themeColor: "#0a0f19",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body className="min-h-screen bg-ink text-cloud font-sans antialiased">{children}</body>
+    <html lang="en" className={cn("dark", geist.variable)}>
+      <body className="min-h-dvh">
+        <Providers>{children}</Providers>
+      </body>
     </html>
   );
 }

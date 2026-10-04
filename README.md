@@ -61,8 +61,13 @@ actionable fee/deadline instructions automatically.
 
 ## Tech stack
 
-TypeScript · Next.js 15 (App Router) · React 18 · Tailwind CSS · Vitest · Zod ·
-Supabase (Auth + Postgres) for real user mode.
+TypeScript · Next.js 15 (App Router) · React 19 · Tailwind CSS v4 · shadcn/ui (Radix,
+Nova preset) · Motion · Lucide · Vitest · Zod · Supabase (Auth + Postgres) for real user mode.
+
+UI components live in `src/components/ui` (shadcn, owned and edited in-repo; a few from
+Aceternity UI, retuned to the brand palette and gated on reduced motion). Page-level
+building blocks are in `src/components/app/primitives.tsx`, and the design tokens —
+one committed dark theme with a fixed state vocabulary — are in `src/app/globals.css`.
 
 Domain logic (`src/lib/domain`) is framework-agnostic and pure, so it's unit-tested in
 isolation and reused by both demo and real-user paths.

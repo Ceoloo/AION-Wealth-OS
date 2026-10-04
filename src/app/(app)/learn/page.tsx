@@ -1,8 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { ArrowRight, ExternalLink } from "lucide-react";
 import { useApp } from "@/lib/store/provider";
-import { Card, Disclaimer, SectionTitle } from "@/components/ui";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Note, PageHeader, PageLoading } from "@/components/app/primitives";
 import { CONTENT_SOURCES } from "@/lib/domain/sources";
 
 const LESSONS = [
@@ -35,52 +38,58 @@ const LESSONS = [
 
 export default function LearnPage() {
   const { ready } = useApp();
-  if (!ready) return <p className="text-sm text-cloud-faint">Loading…</p>;
+  if (!ready) return <PageLoading />;
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-bold text-cloud">Learn</h1>
-        <p className="text-sm text-cloud-muted">Credit foundations, in plain language.</p>
+    <div className="max-w-3xl">
+      <PageHeader title="Learn" description="Credit foundations, in plain language." />
+
+      <div className="space-y-6">
+        <Card className="gap-0 py-0">
+          <ol className="divide-y divide-border">
+            {LESSONS.map((l) => {
+              const src = l.sourceId ? CONTENT_SOURCES[l.sourceId] : null;
+              return (
+                <li key={l.title} className="px-5 py-5 sm:px-6">
+                  <h2 className="font-semibold tracking-tight">{l.title}</h2>
+                  <p className="mt-1.5 max-w-prose text-[0.95rem] leading-relaxed text-muted-foreground text-pretty">
+                    {l.body}
+                  </p>
+                  {src ? (
+                    <a
+                      href={src.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-2.5 inline-flex items-center gap-1 text-sm font-medium text-primary underline"
+                    >
+                      {src.publisher}
+                      <ExternalLink className="size-3.5" />
+                    </a>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ol>
+        </Card>
+
+        <div className="flex flex-col gap-3 rounded-2xl border border-primary/20 bg-brand-surface p-5 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-pretty">
+            Tracking a suspected error on your report? The report-issue workspace now lives with your
+            credit figures.
+          </p>
+          <Button variant="secondary" size="sm" asChild className="shrink-0">
+            <Link href="/credit">
+              Go to Credit
+              <ArrowRight data-icon="inline-end" />
+            </Link>
+          </Button>
+        </div>
+
+        <Note>
+          AION does not remove accurate information, generate dispute letters, or contact bureaus in
+          v0.1. This workspace helps you organize facts; you act through official channels.
+        </Note>
       </div>
-
-      <div className="space-y-3">
-        <SectionTitle title="Credit foundations" />
-        {LESSONS.map((l) => {
-          const src = l.sourceId ? CONTENT_SOURCES[l.sourceId] : null;
-          return (
-            <Card key={l.title}>
-              <p className="font-medium text-cloud">{l.title}</p>
-              <p className="mt-1 text-sm text-cloud-muted">{l.body}</p>
-              {src ? (
-                <a
-                  href={src.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-1 inline-block text-xs text-teal underline"
-                >
-                  {src.publisher} →
-                </a>
-              ) : null}
-            </Card>
-          );
-        })}
-      </div>
-
-      <Card className="border-teal/30">
-        <p className="text-sm text-cloud">
-          Tracking a suspected error on your report? The report-issue workspace now lives with your
-          credit figures.
-        </p>
-        <Link href="/credit" className="mt-2 inline-block text-sm font-medium text-teal underline">
-          Go to Credit →
-        </Link>
-      </Card>
-
-      <Disclaimer>
-        AION does not remove accurate information, generate dispute letters, or contact bureaus in
-        v0.1. This workspace helps you organize facts; you act through official channels.
-      </Disclaimer>
     </div>
   );
 }

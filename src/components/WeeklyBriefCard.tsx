@@ -1,8 +1,12 @@
 "use client";
 
-import { Badge, Card, Disclaimer, SectionTitle } from "./ui";
-import { formatCents } from "@/lib/domain/money";
+import { CalendarClock, CircleAlert, ClipboardList, HelpCircle, Scale } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
+import { Money, Note } from "@/components/app/primitives";
 import type { FigureChange, WeeklyBrief } from "@/lib/domain/brief";
+import { formatCents } from "@/lib/domain/money";
+import { cn } from "@/lib/utils";
 
 /**
  * Renders the deterministic weekly brief. No model wrote any of this text —
@@ -11,128 +15,133 @@ import type { FigureChange, WeeklyBrief } from "@/lib/domain/brief";
  */
 export function WeeklyBriefCard({ brief }: { brief: WeeklyBrief }) {
   return (
-    <div className="space-y-3">
-      <SectionTitle
-        title="Your week"
-        subtitle={`${brief.periodStart} to ${brief.periodEnd}`}
-      />
-
+    <div className="space-y-4">
       <Card>
-        <div className="flex items-start justify-between gap-2">
-          <p className="font-semibold text-cloud">{brief.headline}</p>
-          <Badge tone="neutral" className="shrink-0 whitespace-nowrap">
-            Not AI
-          </Badge>
-        </div>
-        {brief.quiet ? (
-          <p className="mt-1 text-sm text-cloud-muted">
-            Nothing to report isn&apos;t a failure. It&apos;s what the records show.
-          </p>
-        ) : null}
-      </Card>
-
-      {brief.overdue.length > 0 ? (
-        <Card className="border-warn/40 bg-warn/5">
-          <p className="text-sm font-medium text-warn">Needs attention</p>
-          <ul className="mt-1 space-y-1 text-sm text-cloud-muted">
-            {brief.overdue.map((t, i) => (
-              <li key={i}>• {t}</li>
-            ))}
-          </ul>
-        </Card>
-      ) : null}
-
-      {brief.dueSoon.length > 0 ? (
-        <Card>
-          <p className="text-sm font-medium text-cloud">Coming up</p>
-          <ul className="mt-1 space-y-1 text-sm text-cloud-muted">
-            {brief.dueSoon.map((t, i) => (
-              <li key={i}>• {t}</li>
-            ))}
-          </ul>
-        </Card>
-      ) : null}
-
-      <Card>
-        <p className="text-sm font-medium text-cloud">What you recorded</p>
-        {brief.recorded.length === 0 ? (
-          <p className="mt-1 text-sm text-cloud-faint">Nothing recorded in this period.</p>
-        ) : (
-          <ul className="mt-1 space-y-1 text-sm text-cloud-muted">
-            {brief.recorded.map((t, i) => (
-              <li key={i}>• {t}</li>
-            ))}
-          </ul>
-        )}
-      </Card>
-
-      <Card>
-        <p className="text-sm font-medium text-cloud">How your figures compare</p>
-        {brief.comparisonNote ? (
-          <p className="mt-1 text-sm text-cloud-faint">{brief.comparisonNote}</p>
-        ) : (
-          <>
-            <p className="mt-0.5 text-xs text-cloud-faint">
-              {brief.comparedFrom} → {brief.comparedTo}
+        <CardContent className="space-y-1.5">
+          <div className="flex items-start justify-between gap-3">
+            <p className="figure text-xs font-medium text-muted-foreground">
+              {brief.periodStart} to {brief.periodEnd}
             </p>
-            {brief.comparisonBasis ? (
-              <p className="text-xs text-cloud-faint">{brief.comparisonBasis}</p>
-            ) : null}
-            <div className="mt-2 divide-y divide-ink-line">
-              {brief.figureChanges.map((c) => (
-                <ChangeRow key={c.key} change={c} />
-              ))}
-            </div>
-          </>
-        )}
+            <Badge variant="muted" className="shrink-0">Not AI</Badge>
+          </div>
+          <p className="text-lg font-semibold tracking-tight text-balance">{brief.headline}</p>
+          {brief.quiet ? (
+            <p className="text-sm text-muted-foreground">
+              Nothing to report isn&apos;t a failure. It&apos;s what the records show.
+            </p>
+          ) : null}
+        </CardContent>
       </Card>
 
-      {brief.stillUnknown.length > 0 ? (
-        <Card>
-          <p className="text-sm font-medium text-cloud">Still unknown</p>
-          <p className="text-xs text-cloud-faint">
-            These are holding up a stage. Filling them in is what moves it.
-          </p>
-          <ul className="mt-1 space-y-1 text-sm text-cloud-muted">
-            {brief.stillUnknown.map((t, i) => (
-              <li key={i}>• {t}</li>
-            ))}
-          </ul>
-        </Card>
-      ) : null}
+      <div className="grid gap-4 md:grid-cols-2">
+        {brief.overdue.length > 0 ? (
+          <BriefList icon={CircleAlert} title="Needs attention" items={brief.overdue} tone="warning" />
+        ) : null}
+        {brief.dueSoon.length > 0 ? <BriefList icon={CalendarClock} title="Coming up" items={brief.dueSoon} /> : null}
+        <BriefList icon={ClipboardList} title="What you recorded" items={brief.recorded} empty="Nothing recorded in this period." />
+        {brief.stillUnknown.length > 0 ? (
+          <BriefList
+            icon={HelpCircle}
+            title="Still unknown"
+            description="These are holding up a stage. Filling them in is what moves it."
+            items={brief.stillUnknown}
+          />
+        ) : null}
+      </div>
 
-      <Disclaimer>
+      <Card>
+        <CardContent className="space-y-3">
+          <p className="flex items-center gap-2 text-sm font-semibold">
+            <Scale className="size-4 text-subtle" />
+            How your figures compare
+          </p>
+          {brief.comparisonNote ? (
+            <p className="text-sm text-muted-foreground">{brief.comparisonNote}</p>
+          ) : (
+            <>
+              <div className="text-xs text-subtle">
+                <p className="figure">
+                  {brief.comparedFrom} → {brief.comparedTo}
+                </p>
+                {brief.comparisonBasis ? <p>{brief.comparisonBasis}</p> : null}
+              </div>
+              <ul className="divide-y divide-border">
+                {brief.figureChanges.map((c) => (
+                  <ChangeRow key={c.key} change={c} />
+                ))}
+              </ul>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      <Note>
         {brief.basis} (brief v{brief.version})
-      </Disclaimer>
+      </Note>
+    </div>
+  );
+}
+
+function BriefList({
+  icon: Icon,
+  title,
+  description,
+  items,
+  empty,
+  tone,
+}: {
+  icon: typeof CircleAlert;
+  title: string;
+  description?: string;
+  items: string[];
+  empty?: string;
+  tone?: "warning";
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-2xl p-5 ring-1",
+        tone === "warning" ? "bg-warning-surface ring-warning/25" : "bg-card ring-foreground/[0.07]",
+      )}
+    >
+      <p className={cn("flex items-center gap-2 text-sm font-semibold", tone === "warning" && "text-warning")}>
+        <Icon className="size-4" />
+        {title}
+      </p>
+      {description ? <p className="mt-0.5 text-xs text-subtle">{description}</p> : null}
+      {items.length === 0 ? (
+        <p className="mt-2 text-sm text-subtle">{empty}</p>
+      ) : (
+        <ul className="mt-2 space-y-1.5">
+          {items.map((t, i) => (
+            <li key={i} className="text-sm text-muted-foreground text-pretty">
+              {t}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
 
 function ChangeRow({ change: c }: { change: FigureChange }) {
   return (
-    <div className="flex items-center justify-between gap-2 py-1.5">
-      <span className="min-w-0 truncate text-sm text-cloud-muted">{c.label}</span>
-      <span className="shrink-0 text-right">
-        {c.deltaCents === null ? (
-          <span className="text-xs text-cloud-faint" title={c.note ?? undefined}>
-            not comparable
+    <li className="flex items-center justify-between gap-3 py-2.5">
+      <span className="min-w-0 truncate text-sm text-muted-foreground">{c.label}</span>
+      {c.deltaCents === null ? (
+        <span className="shrink-0 text-xs text-subtle" title={c.note ?? undefined}>
+          not comparable
+        </span>
+      ) : (
+        <span className="flex shrink-0 items-baseline gap-2.5 text-right">
+          <span className="text-sm">
+            <Money cents={c.beforeCents} className="text-subtle" /> → <Money cents={c.afterCents} />
           </span>
-        ) : (
-          <>
-            <span className="text-sm text-cloud">
-              {formatCents(c.beforeCents)} → {formatCents(c.afterCents)}
-            </span>
-            {c.direction !== "same" ? (
-              <span className="ml-2 text-xs text-cloud-faint">
-                {c.deltaCents > 0 ? "+" : "−"}
-                {formatCents(Math.abs(c.deltaCents))}
-              </span>
-            ) : (
-              <span className="ml-2 text-xs text-cloud-faint">no change</span>
-            )}
-          </>
-        )}
-      </span>
-    </div>
+          <span className="figure w-20 text-xs text-muted-foreground">
+            {c.direction === "same" ? "no change" : `${c.deltaCents > 0 ? "+" : "−"}${formatCents(Math.abs(c.deltaCents))}`}
+          </span>
+        </span>
+      )}
+    </li>
   );
 }
