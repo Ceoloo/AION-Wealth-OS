@@ -6,6 +6,7 @@ import { emptyBundle } from "../data/bundle";
 import { buildDemoBundle, DEMO_OWNER_ID } from "./demoData";
 import { generatePlan } from "../domain/plan/engine";
 import { assessJourney, type JourneyAssessment } from "../domain/journey";
+import { generateWeeklyBrief, type WeeklyBrief } from "../domain/brief";
 import { summarize } from "../domain/finance";
 import type { GeneratedPlan } from "../domain/types";
 import { nowISO, todayISO } from "../today";
@@ -80,6 +81,7 @@ interface AppState {
   bundle: UserDataBundle;
   plan: GeneratedPlan;
   journey: JourneyAssessment;
+  brief: WeeklyBrief;
   hasData: boolean;
 
   // session control
@@ -351,6 +353,22 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     });
   }, [bundle]);
 
+  // Derived from the same facts as the plan and the journey, so the three can
+  // never tell the user different stories about the same week.
+  const brief = useMemo<WeeklyBrief>(
+    () =>
+      generateWeeklyBrief({
+        asOf: todayISO(),
+        generatedAt: nowISO(),
+        snapshots: bundle.snapshots,
+        creditIssues: bundle.creditIssues,
+        events: bundle.actionEvents,
+        plan,
+        journey,
+      }),
+    [bundle, plan, journey],
+  );
+
   const persistDemoBundle = useCallback((next: UserDataBundle) => {
     try {
       if (typeof window !== "undefined") window.localStorage.setItem(DEMO_KEY, JSON.stringify(next));
@@ -372,6 +390,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     bundle,
     plan,
     journey,
+    brief,
     hasData: bundle.profile !== null || bundle.snapshots.length > 0,
 
     enterDemo: () => {

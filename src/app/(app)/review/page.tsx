@@ -8,9 +8,10 @@ import { Button, Card, Disclaimer, Field, TextArea, TextInput, SectionTitle } fr
 import { formatCents } from "@/lib/domain/money";
 import { todayISO } from "@/lib/today";
 import type { WeeklyReviewInput } from "@/lib/validation/schemas";
+import { WeeklyBriefCard } from "@/components/WeeklyBriefCard";
 
 export default function ReviewPage() {
-  const { ready, bundle, plan, saveWeeklyReview } = useApp();
+  const { ready, bundle, plan, brief, saveWeeklyReview } = useApp();
   const [form, setForm] = useState<WeeklyReviewInput>({
     weekOf: todayISO(),
     updatedBalancesNote: null,
@@ -37,8 +38,12 @@ export default function ReviewPage() {
     <div className="space-y-4">
       <div>
         <h1 className="text-xl font-bold text-cloud">Weekly review</h1>
-        <p className="text-sm text-cloud-muted">Record progress and compare to your baseline.</p>
+        <p className="text-sm text-cloud-muted">
+          Your week, computed from your own records — then your notes on it.
+        </p>
       </div>
+
+      <WeeklyBriefCard brief={brief} />
 
       {/* Baseline vs latest */}
       <div>
