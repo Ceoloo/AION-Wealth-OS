@@ -22,6 +22,7 @@ import {
   type SnapshotInput,
   type WeeklyReviewInput,
 } from "../validation/schemas";
+import { stampUserEdits } from "../domain/provenance";
 
 /**
  * Pure, validated state transitions over a UserDataBundle. Each returns a NEW
@@ -48,6 +49,7 @@ function clone(b: UserDataBundle): UserDataBundle {
     partnerStatuses: { ...b.partnerStatuses },
     partnersAcknowledged: b.partnersAcknowledged,
     referralEvents: [...b.referralEvents],
+    connections: [...b.connections],
   };
 }
 
@@ -170,7 +172,7 @@ export function upsertAccount(
   if (existingId) {
     b.accounts = b.accounts.map((a) =>
       a.id === existingId && a.ownerId === ctx.ownerId
-        ? { ...a, ...input, updatedAt: now }
+        ? stampUserEdits(a, { ...a, ...input, updatedAt: now })
         : a,
     );
     return b;

@@ -58,6 +58,17 @@ export class DemoRepository implements Repository {
         partnerStatuses: parsed.partnerStatuses ?? {},
         partnersAcknowledged: parsed.partnersAcknowledged ?? false,
         referralEvents: parsed.referralEvents ?? [],
+        // Demo mode cannot connect accounts, so nothing in browser storage may
+        // claim to have come from one. Provenance is reset to the default.
+        connections: [],
+        accounts: (parsed.accounts ?? []).map((a) => ({
+          ...a,
+          source: "user_reported" as const,
+          fieldSources: {},
+          plaidItemId: null,
+          syncedAt: null,
+        })),
+        snapshots: (parsed.snapshots ?? []).map((s) => ({ ...s, fieldSources: {} })),
       } as UserDataBundle;
     } catch {
       return emptyBundle(DEMO_OWNER_ID);

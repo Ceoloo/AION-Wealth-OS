@@ -116,5 +116,6 @@ export function buildDemoBundle(): UserDataBundle {
     partnerStatuses: {},
     partnersAcknowledged: false,
     referralEvents: [],
+    connections: [],
   };
 }

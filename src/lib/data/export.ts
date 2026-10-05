@@ -6,6 +6,8 @@ import { generatePlan } from "../domain/plan/engine";
 import { CONTENT_SOURCES } from "../domain/sources";
 import { referralFunnel } from "../domain/partners";
 import type { Metric } from "../domain/finance";
+import { SOURCE_LABEL, snapshotFigureSource } from "../domain/provenance";
+import type { SnapshotFigure } from "../domain/types";
 
 /**
  * Authenticated data export. Produces:
@@ -72,6 +74,12 @@ export function buildExport(bundle: UserDataBundle, asOf: string, generatedAt: s
     lines.push(
       metricLine("Revolving utilization", summary.utilization, false),
     );
+    const sourced = (
+      ["availableCashCents", "liabilitiesCents", "requiredDebtPaymentsCents", "hasPastDueAccounts"] as SnapshotFigure[]
+    ).filter((f) => snapshotFigureSource(snapshot, f) !== "user_reported");
+    if (sourced.length > 0) {
+      lines.push(`- **Sources:** ${sourced.map((f) => `${f}: ${SOURCE_LABEL[snapshotFigureSource(snapshot, f)]}`).join("; ")}. Everything else: as you entered it.`);
+    }
     if (summary.doubleCount.notes.length > 0) {
       lines.push(`- **Data checks:**`);
       for (const n of summary.doubleCount.notes) lines.push(`  - ${n}`);
@@ -121,6 +129,18 @@ export function buildExport(bundle: UserDataBundle, asOf: string, generatedAt: s
   }
   lines.push("");
 
+  // Connected institutions (metadata only — no tokens exist in the bundle)
+  if (bundle.connections.length > 0) {
+    lines.push(`## Connected institutions`);
+    for (const c of bundle.connections) {
+      const synced = c.lastSyncedAt ? `last synced ${c.lastSyncedAt.slice(0, 10)}` : "not yet synced";
+      lines.push(`- **${c.institutionName ?? "Institution"}** — ${c.status}, ${synced}`);
+    }
+    const connectedCount = bundle.accounts.filter((a) => a.source === "connected_account").length;
+    lines.push(`- ${connectedCount} account(s) imported through these connections. Figures marked "connected_account" in the JSON were reported by the institution and are not independently verified.`);
+    lines.push("");
+  }
+
   // Credit issues
   if (bundle.creditIssues.length > 0) {
     lines.push(`## Credit issues (for your review)`);
@@ -151,7 +171,8 @@ export function buildExport(bundle: UserDataBundle, asOf: string, generatedAt: s
 
   // Structured JSON — the user's own records + computed plan, no secrets.
   const jsonObject = {
-    exportVersion: 1,
+    // v2: adds `connections` and per-figure `fieldSources` provenance.
+    exportVersion: 2,
     generatedAt,
     engineVersion: plan.engineVersion,
     ownerId: bundle.ownerId,
@@ -164,6 +185,7 @@ export function buildExport(bundle: UserDataBundle, asOf: string, generatedAt: s
     formationStatuses: bundle.formationStatuses,
     partnerStatuses: bundle.partnerStatuses,
     referralEvents: bundle.referralEvents,
+    connections: bundle.connections,
     referralFunnel: referralFunnel(bundle.referralEvents),
     computed: {
       summary: summary

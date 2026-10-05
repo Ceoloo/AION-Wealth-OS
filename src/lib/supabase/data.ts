@@ -4,7 +4,9 @@ import { emptyBundle } from "../data/bundle";
 import type { FormationItemStatus } from "../domain/formation";
 import type { PartnerStatus } from "../domain/partners";
 import {
+  CONNECTION_COLUMNS,
   rowToAccount,
+  rowToConnection,
   rowToActionEvent,
   rowToCreditIssue,
   rowToProfile,
@@ -35,6 +37,7 @@ export async function loadBundle(
     formationRes,
     partnerRes,
     referralRes,
+    connectionsRes,
   ] = await Promise.all([
     supabase.from("profiles").select("*").eq("owner_id", ownerId).maybeSingle(),
     supabase.from("financial_snapshots").select("*").eq("owner_id", ownerId).order("as_of"),
@@ -45,6 +48,9 @@ export async function loadBundle(
     supabase.from("formation_checklists").select("*").eq("owner_id", ownerId),
     supabase.from("partner_statuses").select("*").eq("owner_id", ownerId),
     supabase.from("referral_events").select("*").eq("owner_id", ownerId).order("at"),
+    // Explicit columns, never "*": the token column is not readable by the
+    // user, so "*" would fail — and must never be what we ask for anyway.
+    supabase.from("plaid_items").select(CONNECTION_COLUMNS).eq("owner_id", ownerId).order("created_at"),
   ]);
 
   if (profileRes.data) {
@@ -57,6 +63,7 @@ export async function loadBundle(
   bundle.actionEvents = (eventsRes.data ?? []).map(rowToActionEvent);
   bundle.weeklyReviews = (reviewsRes.data ?? []).map(rowToWeeklyReview);
   bundle.referralEvents = (referralRes.data ?? []).map(rowToReferralEvent);
+  bundle.connections = (connectionsRes.data ?? []).map((r) => rowToConnection(r as Record<string, unknown>));
 
   const formationStatuses: Record<string, FormationItemStatus> = {};
   for (const row of formationRes.data ?? []) {

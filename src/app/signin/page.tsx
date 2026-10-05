@@ -197,7 +197,8 @@ function AuthLayout({ children }: { children: React.ReactNode }) {
             </li>
             <li className="flex gap-3">
               <EyeOff className="mt-0.5 size-4 shrink-0 text-primary" />
-              We never ask for bank logins, SSNs, full account numbers, identity documents, or credit-report uploads.
+              AION never sees your bank login, SSN or full account numbers. Connecting a bank is optional and
+              happens through Plaid.
             </li>
             <li className="flex gap-3">
               <LockKeyhole className="mt-0.5 size-4 shrink-0 text-primary" />

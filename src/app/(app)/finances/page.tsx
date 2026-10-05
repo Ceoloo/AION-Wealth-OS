@@ -8,6 +8,8 @@ import { latestSnapshot } from "@/lib/data/bundle";
 import { Metrics } from "@/components/Metrics";
 import { SnapshotForm } from "@/components/SnapshotForm";
 import { AccountManager } from "@/components/AccountManager";
+import { ConnectedAccounts } from "@/components/ConnectedAccounts";
+import { SnapshotSources } from "@/components/SnapshotSources";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState, Note, PageHeader, PageLoading } from "@/components/app/primitives";
@@ -16,7 +18,12 @@ type Tab = "overview" | "snapshot" | "accounts";
 
 export default function FinancesPage() {
   const { ready, bundle, summary: sharedSummary } = useApp();
-  const [tab, setTab] = useState<Tab>("overview");
+  // ?tab=accounts lands on Accounts (used when returning from a bank sign-in).
+  const [tab, setTab] = useState<Tab>(() =>
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("tab") === "accounts"
+      ? "accounts"
+      : "overview",
+  );
   if (!ready) return <PageLoading />;
 
   const snapshot = latestSnapshot(bundle);
@@ -42,8 +49,9 @@ export default function FinancesPage() {
                 Snapshot as of <span className="figure">{snapshot!.asOf}</span>
               </p>
               <Metrics summary={summary} />
+              <SnapshotSources snapshot={snapshot!} />
               <Note>
-                These are app-side estimates from figures you entered — not bureau or lender
+                These are app-side estimates from your figures — not bureau or lender
                 calculations. Utilization excludes any revolving account with an unknown limit.
               </Note>
             </>
@@ -67,7 +75,7 @@ export default function FinancesPage() {
         </TabsContent>
 
         <TabsContent value="accounts" className="mt-5 space-y-4">
-          <p className="text-sm text-muted-foreground">No bank logins, SSNs, or full account numbers.</p>
+          <ConnectedAccounts />
           <AccountManager />
           <Link href="/business" className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:text-primary/80">
             Working on a business? See Business Setup

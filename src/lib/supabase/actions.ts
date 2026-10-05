@@ -10,6 +10,8 @@ import type { ActionEventType, SelfReportedScore } from "../domain/types";
 import type { FormationItemStatus } from "../domain/formation";
 import type { PartnerStatus, PartnerCategory, ReferralEventType } from "../domain/partners";
 import { PARTNERS } from "../domain/partners";
+import { plaidServiceDeps } from "../plaid/server";
+import { revokeAll } from "../plaid/service";
 import {
   actionEventArgsSchema,
   formationItemIdSchema,
@@ -37,8 +39,10 @@ import {
  *  3. writes with owner_id stamped to auth.uid() (RLS is the DB backstop),
  *  4. returns a freshly-loaded bundle so the client stays consistent.
  *
- * The service-role key is never used here — actions act AS the user via their
- * cookie-bound session, so RLS applies to every statement.
+ * Actions act AS the user via their cookie-bound session, so RLS applies to
+ * every statement. One exception: deletion must revoke connected accounts at
+ * Plaid, which needs the encrypted access token the user cannot read, so it
+ * goes through the owner-scoped service in src/lib/plaid/service.ts.
  */
 
 class AuthRequiredError extends Error {
@@ -294,12 +298,26 @@ export async function recordReferralEventAction(
  * identity (that needs service-role administration), so the product copy says
  * "delete my data" and the sign-in is retained — see docs and Settings.
  *
- * Requires a recent sign-in, runs as one transactional database routine, and
- * verifies its own postcondition. Any failure throws, so a partial deletion can
+ * Requires a recent sign-in. Revokes every bank connection at Plaid first, then
+ * runs one transactional database routine that verifies its own postcondition. Any failure throws, so a partial deletion can
  * never be reported to the user as success.
  */
 export async function deleteAllDataAction(): Promise<UserDataBundle> {
   const { supabase, uid } = await requireRecentAuth();
+
+  // Connected accounts first: revoke AION's access at Plaid itself. If any
+  // revocation cannot be confirmed, stop before deleting anything — deleting
+  // our only copy of a still-working token would leave access nobody can end.
+  const { data: connections, error: connError } = await supabase
+    .from("plaid_items")
+    .select("id")
+    .eq("owner_id", uid);
+  if (connError) throw new Error(connError.message);
+  if ((connections ?? []).length > 0) {
+    const deps = plaidServiceDeps();
+    if (!deps) throw new Error("CONNECTIONS_CANNOT_BE_REVOKED");
+    await revokeAll(deps, uid);
+  }
 
   const { data, error } = await supabase.rpc("delete_my_data");
   if (error) throw new Error(error.message);
@@ -322,6 +340,7 @@ export async function deleteAllDataAction(): Promise<UserDataBundle> {
     after.referralEvents.length +
     Object.keys(after.formationStatuses).length +
     Object.keys(after.partnerStatuses).length +
+    after.connections.length +
     (after.profile ? 1 : 0);
   if (leftovers !== 0) throw new Error("DELETION_INCOMPLETE");
 

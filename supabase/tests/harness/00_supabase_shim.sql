@@ -31,3 +31,14 @@ begin
 end $$;
 
 grant usage on schema public, auth to anon, authenticated, service_role;
+
+-- Supabase grants privileges through DEFAULT PRIVILEGES, set before any
+-- migration runs: every table and sequence created in `public` is fully granted
+-- to anon, authenticated and service_role, and RLS then narrows rows. Mirroring
+-- that here (rather than re-granting everything after the migrations, as this
+-- harness used to) matters: a migration that REVOKES access — e.g. hiding the
+-- Plaid token column from `authenticated` — must stay revoked under test, or the
+-- isolation tests would pass for the wrong reason.
+alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
+alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
+alter default privileges in schema public grant all on functions to anon, authenticated, service_role;

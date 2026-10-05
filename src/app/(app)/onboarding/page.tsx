@@ -202,8 +202,9 @@ export default function OnboardingPage() {
         {saveError ? <InlineError>{saveError} Your answers are still here — try again.</InlineError> : null}
 
         <Note>
-          We never ask for bank logins, SSNs, full account numbers, identity documents, or credit-report
-          uploads. You enter or confirm your own figures.
+          AION never sees your bank login, SSN or full account numbers, and never asks for identity
+          documents or credit-report uploads. You enter your own figures — or, if you choose, connect an
+          account: you sign in through Plaid, not AION.
         </Note>
       </div>
     </div>

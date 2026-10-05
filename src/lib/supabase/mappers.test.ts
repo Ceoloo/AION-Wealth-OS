@@ -6,6 +6,8 @@ import {
   snapshotToRow,
   accountToRow,
   rowToReferralEvent,
+  rowToConnection,
+  CONNECTION_COLUMNS,
 } from "./mappers";
 
 describe("row -> domain mappers", () => {
@@ -100,5 +102,46 @@ describe("domain -> row mappers", () => {
     expect(row.credit_limit_cents).toBeNull();
     expect(row.is_revolving).toBe(false);
     expect(row.classification).toBe("business");
+  });
+});
+
+describe("provenance + connections", () => {
+  it("keeps known sources and drops anything unrecognised rather than trusting it", () => {
+    const a = rowToAccount({
+      id: "a",
+      owner_id: "o",
+      nickname: "Card",
+      classification: "personal",
+      kind: "credit_card",
+      source: "connected_account",
+      plaid_item_id: "item-row",
+      field_sources: {
+        balanceCents: "connected_account",
+        aprBps: "bank_says_so",
+        nickname: "verified_source",
+        dueDate: 7,
+      },
+    });
+    expect(a.source).toBe("connected_account");
+    expect(a.fieldSources).toEqual({ balanceCents: "connected_account" });
+    expect(a.plaidItemId).toBe("item-row");
+  });
+
+  it("defaults a missing or unknown source to user_reported, never stronger", () => {
+    expect(rowToAccount({ source: "verified_source", field_sources: "nope" }).source).toBe("user_reported");
+    expect(rowToAccount({ field_sources: null }).fieldSources).toEqual({});
+    expect(rowToSnapshot({ field_sources: ["derived"] }).fieldSources).toEqual({});
+  });
+
+  it("maps a connection without any token field, and never selects the token column", () => {
+    const c = rowToConnection({
+      id: "c",
+      institution_name: "First Platypus Bank",
+      status: "weird",
+      access_token_ciphertext: "v1.secret",
+    });
+    expect(c.status).toBe("active");
+    expect(JSON.stringify(c)).not.toContain("secret");
+    expect(CONNECTION_COLUMNS).not.toMatch(/token|\*/);
   });
 });

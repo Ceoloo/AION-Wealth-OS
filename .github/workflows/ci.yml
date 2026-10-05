@@ -114,7 +114,18 @@ jobs:
             echo "E2E_SUPABASE_ANON_KEY=$anon_key"
             echo "E2E_EMAIL=$email"
             echo "E2E_PASSWORD=$password"
+            echo "IT_SUPABASE_URL=$api_url"
+            echo "IT_SUPABASE_ANON_KEY=$anon_key"
+            echo "IT_SUPABASE_SERVICE_KEY=$service_key"
           } >> "$GITHUB_ENV"
+
+      # Connected accounts against the real schema: service-role store, RLS,
+      # hidden token column, provenance trigger, disconnect and deletion.
+      # Plaid itself is faked here (see the plaid-sandbox job for the real API).
+      - name: Connected-data integration (local Supabase, fake Plaid)
+        env:
+          IT_REQUIRED: "1"
+        run: npm run test:it
 
       - name: Real-mode journey
         run: npm run test:e2e
@@ -140,3 +151,27 @@ jobs:
       - name: Stop local Supabase
         if: always()
         run: supabase stop --no-backup || true
+
+  plaid-sandbox:
+    name: Plaid sandbox contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # Sandbox credentials only (free, synthetic data). Never production.
+      PLAID_SANDBOX_CLIENT_ID: ${{ secrets.PLAID_SANDBOX_CLIENT_ID }}
+      PLAID_SANDBOX_SECRET: ${{ secrets.PLAID_SANDBOX_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Contract test against the Plaid sandbox
+        run: |
+          if [ -z "$PLAID_SANDBOX_CLIENT_ID" ] || [ -z "$PLAID_SANDBOX_SECRET" ]; then
+            echo "NOT RUN: PLAID_SANDBOX_CLIENT_ID / PLAID_SANDBOX_SECRET are not configured."
+            echo "::notice title=Plaid sandbox contract NOT RUN::Add the two repository secrets to enable it. This check has NOT passed."
+            exit 0
+          fi
+          PLAID_CONTRACT_REQUIRED=1 npm run test:plaid-sandbox

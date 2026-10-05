@@ -32,6 +32,7 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // Run on app routes, skip static assets.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  // Run on app routes, skip static assets. The Plaid webhook is excluded: it
+  // carries no user session and authenticates by its own signature.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/plaid/webhook).*)"],
 };

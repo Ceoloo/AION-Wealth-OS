@@ -28,6 +28,8 @@ begin
     values (u, 'kikoff', 'credit_builder', 'click');
   insert into public.ai_usage (owner_id, prompt_tokens, output_tokens, cost_cents)
     values (u, 10, 20, 1);
+  insert into public.plaid_items (owner_id, item_id, access_token_ciphertext, institution_name)
+    values (u, 'item-' || u::text, 'ciphertext-for-' || u::text, 'Test Bank');
 end $$;
 
 /** Count every private row belonging to a user, bypassing RLS. */
@@ -42,7 +44,8 @@ language sql security definer set search_path = public, pg_temp as $$
        + (select count(*) from public.formation_checklists where owner_id = u)
        + (select count(*) from public.partner_statuses     where owner_id = u)
        + (select count(*) from public.referral_events      where owner_id = u)
-       + (select count(*) from public.ai_usage             where owner_id = u);
+       + (select count(*) from public.ai_usage             where owner_id = u)
+       + (select count(*) from public.plaid_items          where owner_id = u);
 $$;
 
 /** Act as a signed-in user for subsequent statements in this transaction. */
@@ -58,6 +61,7 @@ create or replace function test_private_tables() returns text[]
 language sql immutable as $$
   select array[
     'profiles','financial_snapshots','accounts','credit_issues','action_events',
-    'weekly_reviews','formation_checklists','partner_statuses','referral_events','ai_usage'
+    'weekly_reviews','formation_checklists','partner_statuses','referral_events','ai_usage',
+    'plaid_items'
   ]::text[];
 $$;
