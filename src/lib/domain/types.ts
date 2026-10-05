@@ -47,6 +47,42 @@ export interface Profile {
   updatedAt: ISODateTime;
 }
 
+/**
+ * Where a figure came from. Extends "unknown ≠ zero" to "inferred ≠ verified ≠
+ * institution-sourced ≠ user-reported": a number is only as trustworthy as its
+ * source, and the app must never present one kind as another.
+ *
+ * - user_reported:     typed in by the user (the default; absent ⇒ this).
+ * - connected_account: reported by the user's financial institution via a
+ *                      connection, unmodified.
+ * - derived:           computed by AION from other figures (e.g. the sum of
+ *                      connected balances). Only as good as its inputs.
+ * - verified_source:   reserved for independently verified data. Nothing
+ *                      writes it yet.
+ *
+ * The database enforces that a user's own write can only ever be
+ * user_reported (migration 0006).
+ */
+export type FieldSource = "user_reported" | "connected_account" | "derived" | "verified_source";
+
+export type AccountFigure =
+  | "balanceCents"
+  | "aprBps"
+  | "minPaymentCents"
+  | "pastDueCents"
+  | "dueDate"
+  | "creditLimitCents";
+
+export type SnapshotFigure =
+  | "takeHomeIncomeCents"
+  | "essentialSpendingCents"
+  | "otherSpendingCents"
+  | "requiredDebtPaymentsCents"
+  | "availableCashCents"
+  | "otherAssetsCents"
+  | "liabilitiesCents"
+  | "hasPastDueAccounts";
+
 export type AccountClass = "personal" | "business";
 export type AccountKind =
   | "credit_card"
@@ -77,6 +113,28 @@ export interface Account {
   includeInSnapshot: boolean;
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
+  /** "connected_account" when it comes from a connection. Absent ⇒ user_reported. */
+  source?: "user_reported" | "connected_account";
+  /** Per-figure provenance. An absent key ⇒ user_reported. */
+  fieldSources?: Partial<Record<AccountFigure, FieldSource>>;
+  /** The connection this account came from, when it did. */
+  plaidItemId?: UUID | null;
+  /** When the connection last refreshed this account. */
+  syncedAt?: ISODateTime | null;
+}
+
+/**
+ * A connection to a financial institution, as a user may see it. Deliberately
+ * has no token field: the access token never leaves the server.
+ */
+export interface Connection {
+  id: UUID;
+  institutionId: string | null;
+  institutionName: string | null;
+  status: "active" | "login_required" | "error";
+  errorCode: string | null;
+  lastSyncedAt: ISODateTime | null;
+  createdAt: ISODateTime;
 }
 
 /**
@@ -98,6 +156,8 @@ export interface FinancialSnapshot {
   /** Optional user-entered credit score — never fabricated. */
   selfReportedScore: SelfReportedScore | null;
   createdAt: ISODateTime;
+  /** Per-figure provenance. An absent key ⇒ user_reported. */
+  fieldSources?: Partial<Record<SnapshotFigure, FieldSource>>;
 }
 
 export interface SelfReportedScore {

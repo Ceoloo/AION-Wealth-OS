@@ -201,6 +201,30 @@ incidents affecting ≥500 consumers.
 an app-level ownership guard (`src/lib/auth/ownership.ts`), minimized data sent to the
 optional AI (coarse bands only, no identifiers/notes — `src/lib/ai/summary.ts`), no bank
 logins / SSNs / full account numbers collected, and authenticated export + deletion.
+
+**Connected accounts (Plaid), added in migration 0006.** Optional; off unless configured.
+The user signs in to their bank inside Plaid's Link widget — AION never receives the
+credentials. Plaid's **Auth** product is not requested, so full account/routing numbers are
+never retrieved; account names keep at most the last 4 characters. The Plaid **access token**
+is encrypted with AES-256-GCM using a key held outside the database
+(`src/lib/plaid/tokenCrypto.ts`), lives in `plaid_items`, and that column is not granted to
+signed-in users at all (they cannot read it even for their own rows, and cannot write
+connections). Only the server, via the service role and always scoped by `owner_id`, reads it
+(`src/lib/plaid/supabaseStore.ts`). **Transactions are not stored**; only balances, limits,
+minimum payments, due dates, APRs and past-due status are kept, each tagged with its source
+(`user_reported | connected_account | derived | verified_source`) — a database trigger
+prevents a user write from claiming anything but `user_reported`. Webhooks are accepted only
+after ES256 signature, body-hash and 5-minute freshness checks (`webhookVerify.ts`).
+**Disconnect** and **delete my data** revoke access at Plaid (`/item/remove`) *before*
+deleting anything; if Plaid cannot confirm, nothing is deleted. Evidence:
+`supabase/tests/connected_accounts.sql`, `src/lib/plaid/*.test.ts`, and the local-Supabase
+integration test `connectedData.it.test.ts` run in CI.
+**Gaps for review.** Plaid's production access requires its security questionnaire and
+end-user privacy disclosures (Plaid's End User Privacy Policy linked in AION's own policy);
+AION's Privacy Policy must describe the connection data, its retention, and that Plaid acts
+as a service provider. Encryption-key rotation is not yet automated (rotating the key today
+means users reconnect). Connected data strengthens the case that AION is a GLBA "financial
+institution" — counsel should weigh this in item 4 below.
 **Gaps for review.** No published **Privacy Policy** or **Terms of Service** yet; no formal
 written Safeguards program; confirm the anon key + RLS posture with counsel; document vendor
 (Supabase, Vercel, any AI provider) data-processing terms; finalize the **backup-retention
@@ -247,6 +271,8 @@ build time.
   `formation.ts`.
 - **Authenticated export + deletion; documented (draft) retention policy** — `export.ts`,
   Settings, README.
+- **Connected accounts: encrypted, user-unreadable token; revoke-before-delete; provenance
+  enforced by the database; verified webhooks** — migration 0006, `src/lib/plaid/`.
 
 ## Open gaps to close before commercial launch
 

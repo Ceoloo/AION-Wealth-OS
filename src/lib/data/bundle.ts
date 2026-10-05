@@ -1,6 +1,7 @@
 import type {
   Account,
   ActionEvent,
+  Connection,
   CreditIssue,
   FinancialSnapshot,
   Profile,
@@ -31,6 +32,12 @@ export interface UserDataBundle {
   partnersAcknowledged: boolean;
   /** Append-only referral click / signup-reported tracking events. */
   referralEvents: ReferralEvent[];
+  /**
+   * Institution connections (real mode only). Metadata only: the access token
+   * is not in the bundle and cannot be, because the database will not let a
+   * signed-in user read that column.
+   */
+  connections: Connection[];
 }
 
 export function emptyBundle(ownerId: string): UserDataBundle {
@@ -46,6 +53,7 @@ export function emptyBundle(ownerId: string): UserDataBundle {
     partnerStatuses: {},
     partnersAcknowledged: false,
     referralEvents: [],
+    connections: [],
   };
 }
 

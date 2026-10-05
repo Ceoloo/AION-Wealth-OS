@@ -1,13 +1,13 @@
 import { defineConfig } from "vitest/config";
 import { fileURLToPath } from "node:url";
 
+/** Tests with a live dependency (local Supabase, Plaid sandbox). See package.json. */
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts"],
-    // These need a live dependency and run as their own CI steps:
-    // npm run test:it (local Supabase) and npm run test:plaid-sandbox.
-    exclude: ["**/node_modules/**", "src/**/*.it.test.ts", "src/**/*.contract.test.ts"],
+    include: ["src/**/*.it.test.ts", "src/**/*.contract.test.ts"],
+    testTimeout: 30_000,
+    fileParallelism: false,
   },
   resolve: {
     alias: {

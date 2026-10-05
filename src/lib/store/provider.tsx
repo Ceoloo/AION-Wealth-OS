@@ -116,6 +116,13 @@ interface AppState {
   acknowledgePartners: () => Promise<MutationResult>;
   recordReferralClick: (partnerId: string) => Promise<MutationResult>;
   reportPartnerSignup: (partnerId: string) => Promise<MutationResult>;
+  /**
+   * Runs a connected-account server action (connect, refresh, disconnect) and
+   * adopts the bundle it returns. Real mode only; the error is the action's code.
+   */
+  runConnectionAction: (
+    call: () => Promise<{ ok: true; bundle: UserDataBundle } | { ok: false; code: string }>,
+  ) => Promise<MutationResult>;
 }
 
 const AppContext = createContext<AppState | null>(null);
@@ -476,6 +483,13 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     acknowledgePartners: () => guardedMutation((repo, b) => repo.acknowledgePartners(b)),
     recordReferralClick: (partnerId) => guardedMutation((repo, b) => repo.recordReferralClick(b, partnerId)),
     reportPartnerSignup: (partnerId) => guardedMutation((repo, b) => repo.reportPartnerSignup(b, partnerId)),
+    runConnectionAction: (call) =>
+      guardedMutation(async (repo) => {
+        if (repo.mode !== "real") throw new Error("NOT_AVAILABLE_IN_DEMO");
+        const r = await call();
+        if (!r.ok) throw new Error(r.code);
+        return r.bundle;
+      }),
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

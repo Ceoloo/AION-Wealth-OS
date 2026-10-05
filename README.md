@@ -162,11 +162,34 @@ summary** (coarse bands and counts — never account identifiers, exact balances
 notes), and applies rate + monthly-spend limits. The model can explain and summarize; it
 has no tools and cannot file, contact creditors, open accounts, or promise returns.
 
+## Connected accounts (Plaid) — optional
+
+Off unless `PLAID_CLIENT_ID`, `PLAID_SECRET`, `PLAID_TOKEN_ENCRYPTION_KEY` and
+`SUPABASE_SERVICE_ROLE_KEY` are set (see `.env.example`). When on, **My Finances → Accounts**
+offers "Connect an account" through Plaid Link.
+
+- **Endpoints:** server actions in `src/lib/plaid/actions.ts` start Link, exchange the
+  one-time public token for the access token, refresh, and disconnect. Plaid's notifications
+  arrive at `POST /api/plaid/webhook`, which verifies the signature before reading anything.
+  OAuth banks return to `/plaid/oauth`.
+- **Translator:** `src/lib/plaid/normalize.ts` turns Plaid accounts + liabilities into the
+  app's `Account` and `FinancialSnapshot`, tagging every figure `connected_account` (from the
+  bank) or `derived` (calculated from accounts). A figure the bank doesn't report keeps what
+  the user typed; one it does report is refreshed on each sync.
+- **Deletion:** disconnecting, and "delete my data", revoke access at Plaid first and delete
+  nothing if Plaid can't confirm.
+- **Tests:** `npm test` (unit, with Plaid fixtures and a fake gateway), `npm run test:db`
+  (schema/RLS), `npm run test:it` (against a local Supabase), and `npm run test:plaid-sandbox`
+  (against Plaid's sandbox; needs `PLAID_SANDBOX_CLIENT_ID` / `PLAID_SANDBOX_SECRET`).
+
 ## Data, security & privacy
 
 - Integer cents for all money; USD only in v0.1.
 - No bank logins, SSNs, full account numbers, identity documents, or raw credit-report
-  uploads are ever collected.
+  uploads are ever collected. Connecting a bank is optional and happens inside Plaid's
+  widget: AION never sees the login, does not request full account numbers (Plaid Auth is
+  off), stores no transactions, and keeps the Plaid access token encrypted in a column
+  signed-in users cannot read. See "Connected accounts" below.
 - Application events preserve status history without copying raw sensitive values.
 - **Deletion contract:** "Delete my data" removes every private record for the signed-in
   user via a transactional, `SECURITY DEFINER` database routine (`delete_my_data()`, see

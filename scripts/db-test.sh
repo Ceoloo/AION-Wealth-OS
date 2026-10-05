@@ -27,7 +27,6 @@ for m in supabase/migrations/*.sql; do
   echo "    - ${m}"
   "${PSQL[@]}" -d "${DBNAME}" -f "${m}"
 done
-"${PSQL[@]}" -d "${DBNAME}" -f supabase/tests/harness/99_grants.sql
 "${PSQL[@]}" -d "${DBNAME}" -f supabase/tests/helpers.sql
 
 echo "==> running tests"
@@ -35,7 +34,8 @@ fail=0
 for t in supabase/tests/rls_cross_user.sql \
          supabase/tests/verified_status_rejection.sql \
          supabase/tests/deletion_contract.sql \
-         supabase/tests/meta_detects_broken_policy.sql; do
+         supabase/tests/meta_detects_broken_policy.sql \
+         supabase/tests/connected_accounts.sql; do
   echo "--- ${t}"
   if ! "${PSQL[@]}" -d "${DBNAME}" -f "${t}" 2>&1 | grep -E "PASS|FAIL|ERROR"; then
     fail=1

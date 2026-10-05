@@ -1,8 +1,12 @@
 import type {
   Account,
+  AccountFigure,
   ActionEvent,
+  Connection,
   CreditIssue,
+  FieldSource,
   FinancialSnapshot,
+  SnapshotFigure,
   Profile,
   SelfReportedScore,
   WeeklyReview,
@@ -21,6 +25,50 @@ const str = (v: unknown): string => (v == null ? "" : String(v));
 const nStr = (v: unknown): string | null => (v == null ? null : String(v));
 const nNum = (v: unknown): number | null => (v == null ? null : Number(v));
 const nBool = (v: unknown): boolean | null => (v == null ? null : Boolean(v));
+
+const FIELD_SOURCES: readonly FieldSource[] = [
+  "user_reported",
+  "connected_account",
+  "derived",
+  "verified_source",
+];
+
+/**
+ * Reads a field_sources jsonb object, keeping only known figures with known
+ * source values. Anything else is dropped rather than trusted: an unrecognised
+ * entry falls back to the default (user_reported), never to a stronger claim.
+ */
+function fieldSources<K extends string>(v: unknown, keys: readonly K[]): Partial<Record<K, FieldSource>> {
+  const out: Partial<Record<K, FieldSource>> = {};
+  if (!v || typeof v !== "object" || Array.isArray(v)) return out;
+  for (const k of keys) {
+    const src = (v as Record<string, unknown>)[k];
+    if (typeof src === "string" && (FIELD_SOURCES as readonly string[]).includes(src)) {
+      out[k] = src as FieldSource;
+    }
+  }
+  return out;
+}
+
+export const ACCOUNT_FIGURES: readonly AccountFigure[] = [
+  "balanceCents",
+  "aprBps",
+  "minPaymentCents",
+  "pastDueCents",
+  "dueDate",
+  "creditLimitCents",
+];
+
+export const SNAPSHOT_FIGURES: readonly SnapshotFigure[] = [
+  "takeHomeIncomeCents",
+  "essentialSpendingCents",
+  "otherSpendingCents",
+  "requiredDebtPaymentsCents",
+  "availableCashCents",
+  "otherAssetsCents",
+  "liabilitiesCents",
+  "hasPastDueAccounts",
+];
 
 export function rowToProfile(r: Row): Profile {
   return {
@@ -52,6 +100,7 @@ export function rowToSnapshot(r: Row): FinancialSnapshot {
     hasPastDueAccounts: nBool(r.has_past_due_accounts),
     selfReportedScore: (r.self_reported_score as SelfReportedScore | null) ?? null,
     createdAt: str(r.created_at),
+    fieldSources: fieldSources(r.field_sources, SNAPSHOT_FIGURES),
   };
 }
 
@@ -72,6 +121,27 @@ export function rowToAccount(r: Row): Account {
     includeInSnapshot: Boolean(r.include_in_snapshot),
     createdAt: str(r.created_at),
     updatedAt: str(r.updated_at),
+    source: r.source === "connected_account" ? "connected_account" : "user_reported",
+    fieldSources: fieldSources(r.field_sources, ACCOUNT_FIGURES),
+    plaidItemId: nStr(r.plaid_item_id),
+    syncedAt: nStr(r.synced_at),
+  };
+}
+
+/** Columns of plaid_items a signed-in user may read. Never the token column. */
+export const CONNECTION_COLUMNS =
+  "id, institution_id, institution_name, status, error_code, last_synced_at, created_at";
+
+export function rowToConnection(r: Row): Connection {
+  const status = str(r.status);
+  return {
+    id: str(r.id),
+    institutionId: nStr(r.institution_id),
+    institutionName: nStr(r.institution_name),
+    status: status === "login_required" || status === "error" ? status : "active",
+    errorCode: nStr(r.error_code),
+    lastSyncedAt: nStr(r.last_synced_at),
+    createdAt: str(r.created_at),
   };
 }
 

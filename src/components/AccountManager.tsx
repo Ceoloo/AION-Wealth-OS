@@ -14,7 +14,8 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { EmptyState, Field, InlineError, Money } from "@/components/app/primitives";
 import { MoneyInput, useFieldValidity } from "./MoneyInput";
 import type { AccountInput } from "@/lib/validation/schemas";
-import type { Account } from "@/lib/domain/types";
+import type { Account, AccountFigure } from "@/lib/domain/types";
+import { accountFigureSource } from "@/lib/domain/provenance";
 import { Wallet } from "lucide-react";
 
 const EMPTY: AccountInput = {
@@ -120,6 +121,7 @@ export function AccountManager() {
                   <div className="min-w-0">
                     <p className="truncate font-medium">{a.nickname}</p>
                     <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {a.source === "connected_account" ? <Badge variant="info">From your bank</Badge> : null}
                       <Badge variant="muted" className="capitalize">{a.classification}</Badge>
                       <Badge variant="muted" className="capitalize">{a.kind.replace(/_/g, " ")}</Badge>
                       {(a.pastDueCents ?? 0) > 0 ? <Badge variant="danger">Past due</Badge> : null}
@@ -144,14 +146,18 @@ export function AccountManager() {
                     <Button variant="ghost" size="icon" aria-label={`Edit ${a.nickname}`} onClick={() => startEdit(a)}>
                       <Pencil />
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`Delete ${a.nickname}`}
-                      onClick={() => setConfirmDelete(confirmDelete === a.id ? null : a.id)}
-                    >
-                      <Trash2 />
-                    </Button>
+                    {/* A connected account would come back on the next sync;
+                        it is removed by disconnecting its institution. */}
+                    {a.source !== "connected_account" ? (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Delete ${a.nickname}`}
+                        onClick={() => setConfirmDelete(confirmDelete === a.id ? null : a.id)}
+                      >
+                        <Trash2 />
+                      </Button>
+                    ) : null}
                   </div>
                 </div>
                 {/* Deleting a financial record is irreversible, so it takes a
@@ -175,7 +181,19 @@ export function AccountManager() {
         </Card>
       ) : null}
 
-      {editing !== null ? <AccountEditor key={editing} form={form} set={set} saving={saving} saveError={saveError} onSave={save} onCancel={() => setEditing(null)} isNew={editing === "new"} /> : null}
+      {editing !== null ? (
+        <AccountEditor
+          key={editing}
+          form={form}
+          set={set}
+          saving={saving}
+          saveError={saveError}
+          onSave={save}
+          onCancel={() => setEditing(null)}
+          isNew={editing === "new"}
+          connected={bundle.accounts.find((a) => a.id === editing && a.source === "connected_account") ?? null}
+        />
+      ) : null}
     </div>
   );
 }
@@ -188,7 +206,9 @@ function AccountEditor({
   onSave,
   onCancel,
   isNew,
+  connected,
 }: {
+  connected: Account | null;
   form: AccountInput;
   set: <K extends keyof AccountInput>(k: K, v: AccountInput[K]) => void;
   saving: boolean;
@@ -211,6 +231,7 @@ function AccountEditor({
     <Card>
       <CardContent className="space-y-5">
         <p className="font-semibold">{isNew ? "Add an account" : "Edit account"}</p>
+        {connected ? <ConnectedEditNote account={connected} /> : null}
         <Field label="Nickname" htmlFor={ids.nickname}>
           <Input
             id={ids.nickname}
@@ -326,5 +347,28 @@ function AccountEditor({
         {saveError ? <InlineError>{saveError} Nothing was saved — your entries are still here.</InlineError> : null}
       </CardContent>
     </Card>
+  );
+}
+
+const FIGURE_NAMES: Record<AccountFigure, string> = {
+  balanceCents: "balance",
+  creditLimitCents: "limit",
+  aprBps: "APR",
+  minPaymentCents: "minimum payment",
+  pastDueCents: "past-due amount",
+  dueDate: "due date",
+};
+
+/** Tells the user which figures their bank will overwrite on the next sync. */
+function ConnectedEditNote({ account }: { account: Account }) {
+  const fromBank = (Object.keys(FIGURE_NAMES) as AccountFigure[]).filter(
+    (f) => accountFigureSource(account, f) === "connected_account",
+  );
+  return (
+    <p className="rounded-lg bg-info-surface px-3 py-2 text-xs text-info">
+      {fromBank.length > 0
+        ? `Your bank reports the ${fromBank.map((f) => FIGURE_NAMES[f]).join(", ")}; the next sync will replace any change you make to those. Anything your bank doesn't report stays as you enter it.`
+        : "Your bank doesn't report figures for this account yet; what you enter stays yours."}
+    </p>
   );
 }

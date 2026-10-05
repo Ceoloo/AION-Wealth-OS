@@ -126,7 +126,7 @@ begin
     end if;
   end loop;
   reset role;
-  if test_count_all(a) <> 10 then
+  if test_count_all(a) <> 11 then
     raise exception 'FAIL: user A lost rows to user B (has %)', test_count_all(a);
   end if;
   raise notice 'PASS: export-path visibility is own-rows-only; user A intact';
