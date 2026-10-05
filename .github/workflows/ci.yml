@@ -53,8 +53,13 @@ jobs:
         run: ./scripts/db-test.sh
 
   integration:
-    name: real-mode browser journey (disposable env)
+    name: real-mode browser journey (local Supabase)
     runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      # Credentials below come from the local instance started in this job, so
+      # their absence means the setup broke -- fail, never pass neutrally.
+      E2E_REQUIRED: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -64,13 +69,66 @@ jobs:
       - run: npm ci
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
-      # This gate needs a DISPOSABLE Supabase project. When one is not
-      # configured the journey reports NOT RUN and the job is neutral -- it is
-      # never reported as passed on the strength of absent dependencies.
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.119.0
+
+      # A fresh, disposable Supabase per run -- never a hosted project. Every
+      # committed migration is applied in order to an empty database, so a
+      # migration that fails to apply fails this job before any test runs.
+      # Only the services the app uses are started.
+      - name: Boot local Supabase (migrations applied from scratch)
+        run: >-
+          supabase start
+          -x realtime,storage-api,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+
+      - name: Create a disposable test user
+        run: |
+          status="$(supabase status -o json)"
+          api_url="$(jq -r '.API_URL' <<<"$status")"
+          anon_key="$(jq -r '.ANON_KEY // .PUBLISHABLE_KEY' <<<"$status")"
+          service_key="$(jq -r '.SERVICE_ROLE_KEY // .SECRET_KEY' <<<"$status")"
+          for v in api_url anon_key service_key; do
+            if [ -z "${!v}" ] || [ "${!v}" = "null" ]; then
+              echo "::error::supabase status did not report $v"; exit 1
+            fi
+          done
+          echo "::add-mask::$service_key"
+
+          email="e2e-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}@example.test"
+          password="$(openssl rand -hex 24)"
+          echo "::add-mask::$password"
+
+          # Confirmed up front so the journey can sign in immediately.
+          curl -fsS -X POST "$api_url/auth/v1/admin/users" \
+            -H "apikey: $service_key" \
+            -H "Authorization: Bearer $service_key" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg e "$email" --arg p "$password" \
+                  '{email: $e, password: $p, email_confirm: true}')" \
+            > /dev/null
+
+          {
+            echo "E2E_SUPABASE_URL=$api_url"
+            echo "E2E_SUPABASE_ANON_KEY=$anon_key"
+            echo "E2E_EMAIL=$email"
+            echo "E2E_PASSWORD=$password"
+          } >> "$GITHUB_ENV"
+
       - name: Real-mode journey
-        env:
-          E2E_SUPABASE_URL: ${{ secrets.E2E_SUPABASE_URL }}
-          E2E_SUPABASE_ANON_KEY: ${{ secrets.E2E_SUPABASE_ANON_KEY }}
-          E2E_EMAIL: ${{ secrets.E2E_EMAIL }}
-          E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
         run: npm run test:e2e
+
+      - name: Supabase service logs (on failure)
+        if: failure()
+        run: |
+          supabase status || true
+          for c in $(docker ps -a --format '{{.Names}}' | grep aion-wealth-os); do
+            echo "::group::$c"
+            docker logs --tail 120 "$c" 2>&1 || true
+            echo "::endgroup::"
+          done
+
+      - name: Stop local Supabase
+        if: always()
+        run: supabase stop --no-backup || true

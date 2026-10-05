@@ -1,5 +1,6 @@
 /**
- * Real-mode browser journey against a DISPOSABLE Supabase project:
+ * Real-mode browser journey against a DISPOSABLE Supabase instance — in CI, a
+ * local Supabase started fresh for the run (see .github/workflows/ci.yml):
  *   sign in -> onboarding save -> snapshot save -> complete an action ->
  *   reload (persistence) -> export -> delete my data (verified empty).
  *
@@ -17,6 +18,14 @@ const REQUIRED = ["E2E_SUPABASE_URL", "E2E_SUPABASE_ANON_KEY", "E2E_EMAIL", "E2E
 const missing = REQUIRED.filter((k) => !process.env[k]);
 
 if (missing.length) {
+  // CI boots a local Supabase for every run, so there the credentials must
+  // exist; their absence means the setup broke, and that must fail the job
+  // rather than pass it neutrally.
+  if (process.env.E2E_REQUIRED === "1") {
+    console.error("FAILED: real-mode browser journey could not start");
+    console.error(`  reason: missing ${missing.join(", ")} although E2E_REQUIRED=1`);
+    process.exit(1);
+  }
   console.log("NOT RUN: real-mode browser journey");
   console.log(`  reason: missing ${missing.join(", ")}`);
   console.log("  This gate requires a disposable Supabase project. It has NOT passed.");
