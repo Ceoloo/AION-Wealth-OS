@@ -119,6 +119,14 @@ jobs:
       - name: Real-mode journey
         run: npm run test:e2e
 
+      - name: Upload journey screenshots + server log (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts
+          path: e2e-artifacts/
+          retention-days: 7
+
       - name: Supabase service logs (on failure)
         if: failure()
         run: |

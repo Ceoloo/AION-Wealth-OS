@@ -37,3 +37,6 @@ yarn-error.log*
 
 # typescript incremental build artifact
 tsconfig.tsbuildinfo
+
+# e2e journey screenshots and server log
+e2e-artifacts/

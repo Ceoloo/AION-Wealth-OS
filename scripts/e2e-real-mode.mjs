@@ -87,13 +87,32 @@ if (build.status !== 0) {
   process.exit(1);
 }
 
-const server = spawn("npx", ["next", "start", "-p", PORT], { stdio: "ignore", detached: true });
+// Server output is kept, not discarded: errors thrown inside server actions
+// only ever appear here, never in the browser.
+const ART = "e2e-artifacts";
+fs.mkdirSync(ART, { recursive: true });
+const serverLog = fs.openSync(`${ART}/next-server.log`, "w");
+const server = spawn("npx", ["next", "start", "-p", PORT], {
+  stdio: ["ignore", serverLog, serverLog],
+  detached: true,
+});
 const stop = () => { try { process.kill(-server.pid); } catch { /* already gone */ } };
 
 let failures = 0;
-const check = (name, ok, detail = "") => {
+let page = null;
+const browserErrors = [];
+const check = async (name, ok, detail = "") => {
   console.log(`${ok ? "PASS" : "FAIL"}: ${name}${detail ? ` — ${detail}` : ""}`);
-  if (!ok) failures += 1;
+  if (ok) return;
+  failures += 1;
+  if (!page) return;
+  // What the user would have seen at the moment of failure.
+  const slug = name.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+  await page.screenshot({ path: `${ART}/${slug}.png`, fullPage: true }).catch(() => {});
+  const alerts = await page.getByRole("alert").allInnerTexts().catch(() => []);
+  const shown = alerts.map((a) => a.trim()).filter(Boolean);
+  if (shown.length) console.log(`  on-screen error: ${shown.join(" | ")}`);
+  console.log(`  url: ${page.url()} · screenshot: ${ART}/${slug}.png`);
 };
 
 try {
@@ -110,7 +129,9 @@ try {
     executablePath: process.env.PLAYWRIGHT_CHROMIUM ?? undefined,
     args: ["--no-sandbox"],
   });
-  const page = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+  page = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+  page.on("pageerror", (e) => browserErrors.push(`pageerror: ${e.message}`));
+  page.on("console", (m) => { if (m.type() === "error") browserErrors.push(`console: ${m.text()}`); });
 
   // 1. sign in
   await page.goto(`${BASE}/signin`, { waitUntil: "networkidle" });
@@ -118,28 +139,38 @@ try {
   await page.fill('input[type="password"]', process.env.E2E_PASSWORD);
   await page.getByRole("button", { name: /^Sign in$/ }).click();
   await page.waitForTimeout(3000);
-  check("signed in reaches real mode", !(await page.locator("text=Choose how to start").isVisible().catch(() => true)));
+  await check("signed in reaches real mode", !(await page.locator("text=Choose how to start").isVisible().catch(() => true)));
 
   // 2. onboarding save (must await persistence before navigating)
   await page.goto(`${BASE}/onboarding`, { waitUntil: "networkidle" });
   await page.selectOption("select >> nth=0", "NY").catch(() => {});
   await page.getByRole("button", { name: /Save & add my finances/ }).click();
   await page.waitForURL(/\/finances/, { timeout: 15000 }).catch(() => {});
-  check("onboarding navigates only after a confirmed save", /\/finances/.test(page.url()));
+  await check("onboarding navigates only after a confirmed save", /\/finances/.test(page.url()));
 
   // 3. snapshot save
   await page.getByRole("tab", { name: /Edit snapshot/ }).click();
-  await page.waitForTimeout(500);
   const money = page.locator('input[inputmode="decimal"]');
-  if (await money.count()) {
-    await money.nth(0).fill("4200");
-    await money.nth(1).fill("2600");
-    await money.nth(3).fill("550");
-    await money.nth(4).fill("1800");
-  }
-  await page.getByRole("button", { name: /Save snapshot/ }).click();
-  await page.waitForTimeout(2500);
-  check("snapshot save confirmed", await page.locator("text=Saved.").first().isVisible().catch(() => false));
+  await money.first().waitFor({ state: "visible", timeout: 10000 });
+  await money.nth(0).fill("4200");
+  await money.nth(1).fill("2600");
+  await money.nth(3).fill("550");
+  await money.nth(4).fill("1800");
+  const saveBtn = page.getByRole("button", { name: /Save snapshot/ });
+  await check("snapshot form accepts the figures", await saveBtn.isEnabled());
+  await saveBtn.click();
+  // Success moves the user to Overview showing the new snapshot; the inline
+  // "Saved." message unmounts with its tab, so it can't be the evidence.
+  // Reload so the check proves the row persisted, not just that state changed.
+  await page.getByText(/Snapshot as of/).waitFor({ timeout: 15000 }).catch(() => {});
+  const shownBeforeReload = await page.getByText(/Snapshot as of/).isVisible().catch(() => false);
+  await check("snapshot save confirmed", shownBeforeReload);
+  await page.reload({ waitUntil: "networkidle" });
+  await page.getByText(/Snapshot as of/).waitFor({ timeout: 15000 }).catch(() => {});
+  await check(
+    "snapshot persisted across reload",
+    await page.getByText(/Snapshot as of/).isVisible().catch(() => false),
+  );
 
   // 4. complete an action, then reload
   await page.goto(`${BASE}/today`, { waitUntil: "networkidle" });
@@ -152,23 +183,23 @@ try {
   await page.reload({ waitUntil: "networkidle" });
   await page.waitForTimeout(2500);
   const afterReload = await page.locator("text=/\\d \\/ \\d complete/").first().textContent();
-  check("completion survives reload in real mode", progress === afterReload, `${progress} -> ${afterReload}`);
+  await check("completion survives reload in real mode", progress === afterReload, `${progress} -> ${afterReload}`);
 
   // 5. export
   await page.goto(`${BASE}/settings`, { waitUntil: "networkidle" });
   const dl = page.waitForEvent("download", { timeout: 15000 }).catch(() => null);
   await page.getByRole("button", { name: /Download plan \+ data/ }).click();
-  check("export produces a file", (await dl) !== null);
+  await check("export produces a file", (await dl) !== null);
 
   // 6. delete my data (requires password re-entry) and verify emptiness
   await page.getByRole("button", { name: /^Delete my data$/ }).click();
   await page.fill('input[type="password"]', process.env.E2E_PASSWORD);
   await page.getByRole("button", { name: /Permanently delete my data/ }).click();
   await page.waitForTimeout(5000);
-  check("deletion reports verified success", await page.locator("text=Deleted and verified").isVisible().catch(() => false));
+  await check("deletion reports verified success", await page.locator("text=Deleted and verified").isVisible().catch(() => false));
   await page.goto(`${BASE}/today`, { waitUntil: "networkidle" });
   await page.waitForTimeout(2000);
-  check("no records remain after deletion", await page.locator("text=No data yet").isVisible().catch(() => false));
+  await check("no records remain after deletion", await page.locator("text=No data yet").isVisible().catch(() => false));
 
   await browser.close();
 } finally {
@@ -177,6 +208,14 @@ try {
 }
 
 if (failures) {
+  if (browserErrors.length) {
+    console.error("--- browser errors ---");
+    for (const e of browserErrors.slice(-20)) console.error(e);
+  }
+  try {
+    const tail = fs.readFileSync(`${ART}/next-server.log`, "utf8").split("\n").slice(-60).join("\n");
+    console.error("--- next server log (tail) ---\n" + tail);
+  } catch { /* no log */ }
   console.error(`REAL-MODE JOURNEY FAILED (${failures} check(s))`);
   process.exit(1);
 }
