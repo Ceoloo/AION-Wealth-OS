@@ -5,6 +5,7 @@ import {
   partnerStatusSchema,
   referralEventTypeSchema,
   engineIdSchema,
+  profileInputSchema,
 } from "./schemas";
 
 describe("runtime guards reject self-asserted verification", () => {
@@ -61,5 +62,33 @@ describe("runtime guards on shape, not just TypeScript types", () => {
     expect(partnerStatusSchema.safeParse("verified").success).toBe(false);
     expect(referralEventTypeSchema.safeParse("click").success).toBe(true);
     expect(referralEventTypeSchema.safeParse("purchase").success).toBe(false);
+  });
+});
+
+describe("profileInputSchema — the situation field", () => {
+  const legacy = {
+    residenceState: "NY" as const,
+    businessState: null,
+    goals: ["form_business"],
+    experience: "new" as const,
+    weeklyTimeMinutes: 120,
+  };
+
+  it("accepts a profile stored before the column existed, as not-answered", () => {
+    // Demo bundles and profile rows written before migration 0005 carry no
+    // `situation` key at all. An absent answer must not fail the whole save.
+    expect(profileInputSchema.parse(legacy).situation).toBeNull();
+  });
+
+  it("keeps an explicit null distinct from a real answer", () => {
+    expect(profileInputSchema.parse({ ...legacy, situation: null }).situation).toBeNull();
+    expect(profileInputSchema.parse({ ...legacy, situation: "behind_on_bills" }).situation).toBe(
+      "behind_on_bills",
+    );
+  });
+
+  it("rejects a situation outside the fixed set", () => {
+    expect(profileInputSchema.safeParse({ ...legacy, situation: "doing_great" }).success).toBe(false);
+    expect(profileInputSchema.safeParse({ ...legacy, situation: "" }).success).toBe(false);
   });
 });

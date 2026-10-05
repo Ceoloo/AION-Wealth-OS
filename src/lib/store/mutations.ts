@@ -115,6 +115,7 @@ export function setProfile(bundle: UserDataBundle, raw: ProfileInput, ctx: Ctx):
     ownerId: ctx.ownerId,
     residenceState: input.residenceState,
     businessState: input.businessState,
+    situation: input.situation,
     goals: input.goals,
     experience: input.experience,
     weeklyTimeMinutes: input.weeklyTimeMinutes,

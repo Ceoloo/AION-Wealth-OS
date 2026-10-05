@@ -20,11 +20,26 @@ export type USState =
 
 export type ExperienceLevel = "new" | "some" | "experienced";
 
+/**
+ * The user's own description of where they stand. A self-report, and treated as
+ * one: it is used to order the first questions and to give a provisional stage
+ * before any figures exist. It never overrides a computed fact — see
+ * `domain/journey.ts`.
+ */
+export type SelfReportedSituation =
+  | "behind_on_bills"
+  | "just_covering"
+  | "small_cushion"
+  | "stable_building"
+  | "unsure";
+
 export interface Profile {
   id: UUID;
   ownerId: UUID;
   residenceState: USState | null;
   businessState: USState | null;
+  /** Self-reported starting point. Never used as evidence of a financial fact. */
+  situation: SelfReportedSituation | null;
   goals: string[]; // fixed goal ids, not free text
   experience: ExperienceLevel | null;
   weeklyTimeMinutes: number | null; // available minutes per week

@@ -116,6 +116,7 @@ function profileInput() {
   return {
     residenceState: "NY" as const,
     businessState: null,
+    situation: null,
     goals: ["form_business"],
     experience: "new" as const,
     weeklyTimeMinutes: 120,

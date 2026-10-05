@@ -180,6 +180,19 @@ describe("revolvingUtilization", () => {
     expect(r.unknownLimitCount).toBe(1);
   });
 
+  it("excludes an unknown BALANCE from both sides rather than counting it as zero", () => {
+    // Regression: the account below used to add its limit to the denominator
+    // while contributing 0 to the numerator, understating utilization (0.25).
+    const r = revolvingUtilization([
+      acct({ id: "a1", balanceCents: 50000, creditLimitCents: 100000 }),
+      acct({ id: "a2", balanceCents: null, creditLimitCents: 100000 }),
+    ]);
+    expect(r.value).toBe(0.5);
+    expect(r.unknownBalanceCount).toBe(1);
+    expect(r.assumptions.join(" ")).toMatch(/would understate your utilization/i);
+    expect(r.missingInputs).toContain("revolving balances");
+  });
+
   it("returns null utilization when no known positive limits (no divide-by-zero)", () => {
     const r = revolvingUtilization([
       acct({ id: "a2", balanceCents: 50000, creditLimitCents: 0 }),
@@ -188,11 +201,27 @@ describe("revolvingUtilization", () => {
     expect(r.unknownLimitCount).toBe(1);
   });
 
-  it("treats unknown balance as zero balance against a known limit", () => {
+  it("names unknown BALANCES as the reason, not missing limits", () => {
+    // Telling the user there are "no known positive limits" when every limit is
+    // known sends them to fix the wrong field.
     const r = revolvingUtilization([
       acct({ id: "a1", balanceCents: null, creditLimitCents: 100000 }),
     ]);
-    expect(r.value).toBe(0);
+    expect(r.assumptions.join(" ")).toContain("No revolving accounts with known balances");
+    expect(r.assumptions.join(" ")).not.toContain("known positive limits");
+  });
+
+  it("has no utilization at all when the only account's balance is unknown", () => {
+    // BEHAVIOUR CHANGE. This previously asserted a ratio of 0 — an unknown
+    // balance counted as zero against a known limit. That contradicts the
+    // project rule that null means "unknown, never 0", and it erred in the
+    // flattering direction: it reported perfect utilization for an account we
+    // know nothing about. Unknown is now reported as unknown.
+    const r = revolvingUtilization([
+      acct({ id: "a1", balanceCents: null, creditLimitCents: 100000 }),
+    ]);
+    expect(r.value).toBeNull();
+    expect(r.unknownBalanceCount).toBe(1);
   });
 });
 

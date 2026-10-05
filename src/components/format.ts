@@ -1,5 +1,7 @@
 import type { ActionStatus, PlanCategory } from "@/lib/domain/types";
 
+export type Tone = "brand" | "success" | "warning" | "danger" | "info" | "muted";
+
 export function statusLabel(s: ActionStatus): string {
   switch (s) {
     case "needs_attention":
@@ -13,16 +15,16 @@ export function statusLabel(s: ActionStatus): string {
   }
 }
 
-export function statusTone(s: ActionStatus): "neutral" | "ok" | "warn" | "danger" | "teal" {
+export function statusTone(s: ActionStatus): Tone {
   switch (s) {
     case "complete":
-      return "ok";
+      return "success";
     case "in_progress":
-      return "teal";
+      return "brand";
     case "needs_attention":
-      return "warn";
+      return "warning";
     case "insufficient_information":
-      return "neutral";
+      return "muted";
   }
 }
 

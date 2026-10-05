@@ -4,6 +4,7 @@ import type {
   CreditIssue,
   FinancialSnapshot,
   Profile,
+  SelfReportedScore,
   WeeklyReview,
 } from "../domain/types";
 import type { FormationItemStatus } from "../domain/formation";
@@ -55,6 +56,22 @@ export function latestSnapshot(bundle: UserDataBundle): FinancialSnapshot | null
     .slice()
     .sort((a, b) => (a.asOf === b.asOf ? a.createdAt.localeCompare(b.createdAt) : a.asOf.localeCompare(b.asOf)))
     .at(-1)!;
+}
+
+/**
+ * The newest score the user has recorded, searched across ALL snapshots.
+ *
+ * Not `latestSnapshot(...).selfReportedScore`: most snapshots carry no score,
+ * so reading only the latest would make a recorded score vanish the moment the
+ * user next updates their figures.
+ */
+export function mostRecentScore(snapshots: FinancialSnapshot[]): SelfReportedScore | null {
+  const withScore = snapshots.filter((s) => s.selfReportedScore !== null);
+  if (withScore.length === 0) return null;
+  return withScore
+    .slice()
+    .sort((a, b) => (a.asOf === b.asOf ? a.createdAt.localeCompare(b.createdAt) : a.asOf.localeCompare(b.asOf)))
+    .at(-1)!.selfReportedScore;
 }
 
 /** Earliest snapshot — the baseline for weekly-review comparisons. */

@@ -56,7 +56,10 @@ begin
   begin
     perform public.delete_my_data();
     ok := true;
-  exception when others then ok := false;  -- AUTH_REQUIRED (28000)
+  -- Catch ONLY the expected condition. delete_my_data() raises AUTH_REQUIRED
+  -- with SQLSTATE 28000; a catch-all here would let an unrelated error pass as
+  -- if the guard had worked.
+  exception when invalid_authorization_specification then ok := false;
   end;
   reset role;
   if ok then raise exception 'FAIL: an unauthenticated caller deleted data'; end if;
@@ -77,8 +80,8 @@ begin
     set local role anon;
     perform public.delete_my_data();
     ok := true;
+  -- anon holds no EXECUTE grant, so the expected failure is 42501.
   exception when insufficient_privilege then ok := false;
-        when others then ok := false;
   end;
   reset role;
   if ok then raise exception 'FAIL: anon executed delete_my_data()'; end if;

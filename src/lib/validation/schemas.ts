@@ -30,9 +30,21 @@ const centsNonNegNullable = z
   .lte(100_000_000_00)
   .nullable();
 
+export const situationSchema = z.enum([
+  "behind_on_bills",
+  "just_covering",
+  "small_cushion",
+  "stable_building",
+  "unsure",
+]);
+
 export const profileInputSchema = z.object({
   residenceState: usStateSchema.nullable(),
   businessState: usStateSchema.nullable(),
+  // `.default(null)` on purpose: profiles and demo bundles stored before this
+  // column existed carry no `situation` key at all, and an absent answer must
+  // read as "not asked" rather than failing the whole save.
+  situation: situationSchema.nullable().default(null),
   goals: z.array(z.string().max(64)).max(20),
   experience: z.enum(["new", "some", "experienced"]).nullable(),
   weeklyTimeMinutes: z.number().int().gte(0).lte(10_080).nullable(),

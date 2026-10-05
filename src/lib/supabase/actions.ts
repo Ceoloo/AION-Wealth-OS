@@ -90,6 +90,7 @@ export async function saveProfileAction(raw: ProfileInput): Promise<UserDataBund
       owner_id: uid,
       residence_state: input.residenceState,
       business_state: input.businessState,
+      situation: input.situation,
       goals: input.goals,
       experience: input.experience,
       weekly_time_minutes: input.weeklyTimeMinutes,

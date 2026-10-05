@@ -7,7 +7,7 @@ import type { UserDataBundle } from "../data/bundle";
 function realBundle(): UserDataBundle {
   const b = emptyBundle("user-a");
   b.profile = {
-    id: "p", ownerId: "user-a", residenceState: "NY", businessState: null, goals: [],
+    id: "p", ownerId: "user-a", residenceState: "NY", businessState: null, situation: null, goals: [],
     experience: "new", weeklyTimeMinutes: 60,
     createdAt: "2026-09-01T00:00:00.000Z", updatedAt: "2026-09-01T00:00:00.000Z",
   };

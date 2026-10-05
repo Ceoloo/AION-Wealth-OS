@@ -11,6 +11,7 @@ function baseProfile(overrides: Partial<Profile> = {}): Profile {
     ownerId: "u1",
     residenceState: "NY",
     businessState: null,
+    situation: null,
     goals: [],
     experience: "new",
     weeklyTimeMinutes: 120,

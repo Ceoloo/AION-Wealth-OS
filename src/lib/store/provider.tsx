@@ -2,9 +2,12 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { UserDataBundle } from "../data/bundle";
-import { emptyBundle } from "../data/bundle";
+import { emptyBundle, latestSnapshot } from "../data/bundle";
 import { buildDemoBundle, DEMO_OWNER_ID } from "./demoData";
 import { generatePlan } from "../domain/plan/engine";
+import { assessJourney, type JourneyAssessment } from "../domain/journey";
+import { generateWeeklyBrief, type WeeklyBrief } from "../domain/brief";
+import { summarize, type FinanceSummary } from "../domain/finance";
 import type { GeneratedPlan } from "../domain/types";
 import { nowISO, todayISO } from "../today";
 import type {
@@ -77,6 +80,10 @@ interface AppState {
   canWrite: boolean;
   bundle: UserDataBundle;
   plan: GeneratedPlan;
+  journey: JourneyAssessment;
+  brief: WeeklyBrief;
+  /** Finance summary of the latest snapshot (all-unknown when there is none). */
+  summary: FinanceSummary;
   hasData: boolean;
 
   // session control
@@ -309,13 +316,67 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         asOf: todayISO(),
         generatedAt: nowISO(),
         profile: bundle.profile,
-        snapshot: latest(bundle),
+        snapshot: latestSnapshot(bundle),
         snapshots: bundle.snapshots,
         accounts: bundle.accounts,
         creditIssues: bundle.creditIssues,
         events: bundle.actionEvents,
       }),
     [bundle],
+  );
+
+  // One finance summary, shared by the journey and every screen that shows a
+  // figure, so no two places can compute the same number differently.
+  const summary = useMemo<FinanceSummary>(() => {
+    const snapshot = latestSnapshot(bundle);
+    return summarize(
+      snapshot ?? {
+        id: "none",
+        ownerId: bundle.ownerId,
+        asOf: todayISO(),
+        takeHomeIncomeCents: null,
+        essentialSpendingCents: null,
+        otherSpendingCents: null,
+        requiredDebtPaymentsCents: null,
+        availableCashCents: null,
+        otherAssetsCents: null,
+        liabilitiesCents: null,
+        hasPastDueAccounts: null,
+        selfReportedScore: null,
+        createdAt: `${todayISO()}T00:00:00.000Z`,
+      },
+      bundle.accounts,
+    );
+  }, [bundle]);
+
+  // Journey staging is derived from the same facts as the plan — never from the
+  // plan's own output — so a stage can't drift from the numbers behind it.
+  const journey = useMemo<JourneyAssessment>(
+    () =>
+      assessJourney({
+        snapshot: latestSnapshot(bundle),
+        accounts: bundle.accounts,
+        creditIssues: bundle.creditIssues,
+        summary,
+        selfReported: bundle.profile?.situation ?? null,
+      }),
+    [bundle, summary],
+  );
+
+  // Derived from the same facts as the plan and the journey, so the three can
+  // never tell the user different stories about the same week.
+  const brief = useMemo<WeeklyBrief>(
+    () =>
+      generateWeeklyBrief({
+        asOf: todayISO(),
+        generatedAt: nowISO(),
+        snapshots: bundle.snapshots,
+        creditIssues: bundle.creditIssues,
+        events: bundle.actionEvents,
+        plan,
+        journey,
+      }),
+    [bundle, plan, journey],
   );
 
   const persistDemoBundle = useCallback((next: UserDataBundle) => {
@@ -338,6 +399,9 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     canWrite,
     bundle,
     plan,
+    journey,
+    brief,
+    summary,
     hasData: bundle.profile !== null || bundle.snapshots.length > 0,
 
     enterDemo: () => {
@@ -417,13 +481,6 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
 
-function latest(b: UserDataBundle) {
-  if (b.snapshots.length === 0) return null;
-  return b.snapshots
-    .slice()
-    .sort((a, c) => (a.asOf === c.asOf ? a.createdAt.localeCompare(c.createdAt) : a.asOf.localeCompare(c.asOf)))
-    .at(-1)!;
-}
 
 export function useApp(): AppState {
   const ctx = useContext(AppContext);

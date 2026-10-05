@@ -8,7 +8,7 @@ const ASOF = "2026-09-12";
 
 function profile(): Profile {
   return {
-    id: "p1", ownerId: "u1", residenceState: "NY", businessState: null, goals: [],
+    id: "p1", ownerId: "u1", residenceState: "NY", businessState: null, situation: null, goals: [],
     experience: "new", weeklyTimeMinutes: 120, createdAt: NOW, updatedAt: NOW,
   };
 }

@@ -61,8 +61,13 @@ actionable fee/deadline instructions automatically.
 
 ## Tech stack
 
-TypeScript · Next.js 15 (App Router) · React 18 · Tailwind CSS · Vitest · Zod ·
-Supabase (Auth + Postgres) for real user mode.
+TypeScript · Next.js 15 (App Router) · React 19 · Tailwind CSS v4 · shadcn/ui (Radix,
+Nova preset) · Motion · Lucide · Vitest · Zod · Supabase (Auth + Postgres) for real user mode.
+
+UI components live in `src/components/ui` (shadcn, owned and edited in-repo; a few from
+Aceternity UI, retuned to the brand palette and gated on reduced motion). Page-level
+building blocks are in `src/components/app/primitives.tsx`, and the design tokens —
+one committed dark theme with a fixed state vocabulary — are in `src/app/globals.css`.
 
 Domain logic (`src/lib/domain`) is framework-agnostic and pure, so it's unit-tested in
 isolation and reused by both demo and real-user paths.
@@ -97,18 +102,41 @@ the browser with clearly-labeled fake data — no credentials required.
 
 ## Configuring real user mode (Supabase)
 
+### Locally — no hosted project needed (recommended for development)
+
+Requires Docker. This boots Postgres 17, Auth and the REST API on your machine,
+applies every file in `supabase/migrations` in order, then `supabase/seed.sql`.
+It's free, disposable, and you can run as many as you like.
+
+```bash
+npx supabase start          # first run pulls images; prints API URL + keys
+npx supabase status         # show them again
+```
+
+Put the printed `API URL` and `anon key` into `.env.local` as
+`NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`, then `npm run dev`.
+`npx supabase db reset` rebuilds the database from the migrations;
+`npx supabase stop` tears everything down.
+
+CI does exactly this on every push: the **real-mode browser journey** job starts a
+fresh local Supabase, creates a throwaway user, runs `npm run test:e2e`, and stops
+it. A migration that doesn't apply cleanly fails that job.
+
+### A hosted project
+
 1. Create a Supabase project.
 2. Copy env vars: `cp .env.example .env.local` and fill in
    `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and (server-only)
    `SUPABASE_SERVICE_ROLE_KEY`.
-3. Apply the schema + RLS and seed shared content:
+3. Apply **every** migration, in order, then the seed. Deploying app code ahead of
+   its migrations breaks real mode, so apply new migrations before merging code
+   that depends on them.
 
    ```bash
-   # Using the Supabase CLI against a local or linked project:
-   supabase db reset            # applies supabase/migrations + supabase/seed.sql
-   # or apply manually:
-   psql "$DATABASE_URL" -f supabase/migrations/0001_init.sql
-   psql "$DATABASE_URL" -f supabase/migrations/0002_realmode.sql
+   # Linked project via the CLI:
+   npx supabase db push
+   # or manually, in filename order:
+   for f in supabase/migrations/*.sql; do psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"; done
    psql "$DATABASE_URL" -f supabase/seed.sql
    ```
 
